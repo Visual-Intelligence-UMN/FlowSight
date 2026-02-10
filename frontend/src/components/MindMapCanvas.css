@@ -21,12 +21,14 @@
   font-weight: 700;
   color: #1e293b;
   margin: 0 0 4px 0;
+  text-align: center;
 }
 
 .panel-subtitle {
   font-size: 13px;
   color: #64748b;
   margin: 0 0 16px 0;
+  text-align: center;
 }
 
 /* Query input */
@@ -114,6 +116,18 @@
   border: 1px solid #e2e8f0;
   display: flex;
   gap: 16px;
+}
+
+/* Custom query panel */
+.custom-query-panel {
+  background: white;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  border: 2px solid #ff9800;
+  z-index: 1000;
+}
+
+.custom-query-panel .panel-title {
+  font-size: 18px;
 }
 
 .legend-item {

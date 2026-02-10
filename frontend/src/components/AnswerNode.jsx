@@ -79,6 +79,23 @@ function AnswerNode({ data, id }) {
                 </button>
               </div>
             )}
+            
+            {/* Individual handle for each bullet point */}
+            <Handle 
+              type="source" 
+              position={Position.Right}
+              id={`bullet-${index}`}
+              className="bullet-handle"
+              style={{ 
+                top: 'auto',
+                right: '-8px',
+                background: '#2196f3',
+                width: '8px',
+                height: '8px',
+                opacity: hoveredBullet === index ? 1 : 0,
+                transition: 'opacity 0.2s ease'
+              }}
+            />
           </div>
         ))}
       </div>
