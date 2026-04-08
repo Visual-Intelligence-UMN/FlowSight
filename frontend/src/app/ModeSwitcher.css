@@ -1,0 +1,79 @@
+/* ─────────────────────────────────────────────
+   ModeSwitcher — toggle switch, fixed top-center
+───────────────────────────────────────────── */
+
+.mode-toggle {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 99px;
+    padding: 5px 14px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* Labels on either side */
+.mode-toggle__label {
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    color: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    transition: color 0.2s ease;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.mode-toggle__label--active {
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 600;
+}
+
+/* Track */
+.mode-toggle__track {
+    position: relative;
+    width: 42px;
+    height: 22px;
+    border-radius: 99px;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.25s ease;
+    flex-shrink: 0;
+}
+
+.mode-toggle__track--qa {
+    background: linear-gradient(135deg, #4caf50, #43a047);
+}
+
+.mode-toggle__track--data {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+}
+
+/* Knob */
+.mode-toggle__knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+.mode-toggle__knob--data {
+    transform: translateX(20px);
+}
