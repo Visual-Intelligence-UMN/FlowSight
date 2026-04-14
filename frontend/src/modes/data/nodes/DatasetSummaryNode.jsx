@@ -119,10 +119,11 @@ function ExpandedSummary({ id, spec, selected }) {
                     data:     insight,
                 });
                 addEdge({
-                    id:     `e-${id}-${insight.id}`,
-                    source: id,
-                    target: insight.id,
-                    style:  EDGE_INSIGHT,
+                    id:           `e-${id}-${insight.id}`,
+                    source:       id,
+                    sourceHandle: 'insights-out',
+                    target:       insight.id,
+                    style:        EDGE_INSIGHT,
                 });
             });
 
@@ -131,6 +132,32 @@ function ExpandedSummary({ id, spec, selected }) {
             console.error('[DataMode] fetchInsights failed:', err);
             setInsightStatus('error');
         }
+    };
+
+    const handleCustomHypothesis = () => {
+        const { nodes, addNode, addEdge } = useDataModeStore.getState();
+        const thisNode = nodes.find((n) => n.id === id);
+        const pos      = thisNode?.position ?? { x: 400, y: 400 };
+        const siblings = useDataModeStore.getState().edges
+            .filter((e) => e.source === id)
+            .map((e) => e.target)
+            .filter((tid) => nodes.find((n) => n.id === tid)?.type === 'customhypothesis')
+            .length;
+
+        const nodeId = `custom-hyp-${Date.now()}`;
+        addNode({
+            id:   nodeId,
+            type: 'customhypothesis',
+            position: { x: pos.x + 420 + siblings * 320, y: pos.y + 300 },
+            data: {},
+        });
+        addEdge({
+            id:           `e-${id}-${nodeId}`,
+            source:       id,
+            sourceHandle: 'custom-hyp-out',
+            target:       nodeId,
+            style:        { stroke: '#7c3aed', strokeWidth: 1.5, strokeDasharray: '5,3' },
+        });
     };
 
     const nodeClass = [
@@ -259,22 +286,43 @@ function ExpandedSummary({ id, spec, selected }) {
                 </div>
             )}
 
-            {/* Generate Insights */}
+            {/* Actions */}
             <div className="dsn__divider" />
             <div className="dm-node__actions">
+                <div style={{ position: 'relative', flex: 1 }}>
+                    <button
+                        className="dm-node__action-btn dm-node__action-btn--primary"
+                        style={{ width: '100%' }}
+                        onClick={handleGenerateInsights}
+                        disabled={insightStatus === 'loading'}
+                    >
+                        {insightStatus === 'loading' ? 'Thinking...'    :
+                         insightStatus === 'error'   ? 'Retry Insights' :
+                                                       'Generate Insights'}
+                    </button>
+                    <Handle type="source" position={Position.Bottom} id="insights-out"
+                        style={{ bottom: -4, left: '50%', transform: 'translateX(-50%)' }} />
+                </div>
+                <div style={{ position: 'relative', flex: 1 }}>
+                    <button
+                        className="dm-node__action-btn dm-node__action-btn--ghost"
+                        style={{ width: '100%' }}
+                        onClick={handleCustomHypothesis}
+                    >
+                        Custom Hypothesis
+                    </button>
+                    <Handle type="source" position={Position.Bottom} id="custom-hyp-out"
+                        style={{ bottom: -4, left: '50%', transform: 'translateX(-50%)' }} />
+                </div>
                 <button
-                    className="dm-node__action-btn dm-node__action-btn--primary"
-                    onClick={handleGenerateInsights}
-                    disabled={insightStatus === 'loading'}
+                    className="dm-node__action-btn dm-node__action-btn--ghost"
+                    onClick={() => {}}
                 >
-                    {insightStatus === 'loading' ? 'Thinking...'    :
-                     insightStatus === 'error'   ? 'Retry Insights' :
-                                                   'Generate Insights'}
+                    Explore Columns
                 </button>
             </div>
 
-            <Handle type="target" position={Position.Top}    />
-            <Handle type="source" position={Position.Bottom} />
+            <Handle type="target" position={Position.Top} />
         </div>
     );
 }

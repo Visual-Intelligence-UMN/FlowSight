@@ -70,7 +70,12 @@ function HypothesisNode({ id, data, selected }) {
             id:       resultId,
             type:     'result',
             position: { x: pos.x + siblings * 380, y: pos.y + 280 },
-            data:     result,
+            data:     {
+                ...result,
+                columns:   data.variables   ?? [],
+                testType:  data.suggested_test ?? '',
+                chart_type: data.chart_type ?? '',
+            },
         });
         addEdge({
             id:     `e-${id}-${resultId}`,

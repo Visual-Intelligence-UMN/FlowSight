@@ -35,6 +35,7 @@ Return a JSON object with a single key "hypothesis" containing exactly these fie
 - suggested_test: most appropriate statistical test name (e.g. "Pearson correlation", "Mann-Whitney U test", "Chi-square test of independence")
 - assumption_notes: one sentence describing the key statistical assumptions to verify before running the test
 - visualization_suggestion: one sentence naming a specific chart type that would help explore this hypothesis visually
+- chart_type: best chart for the result node. Same options as insight chart_type: "scatter", "grouped_bar", "histogram", "histogram_outlier", "correlation_heatmap". Must match the columns in "variables" — do not pick scatter if any variable is categorical.
 
 Be specific — reference actual column names and mention observed statistics where relevant.`;
 

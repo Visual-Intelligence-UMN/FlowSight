@@ -1,8 +1,11 @@
 import { Handle, Position } from '@xyflow/react';
+import useDataModeStore from '../store/useDataModeStore';
+import ResultChart from './charts/ResultChart';
 import './nodes.css';
 
 function ResultNode({ data, selected }) {
-    const sig = data.significant;
+    const sig         = data.significant;
+    const datasetSpec = useDataModeStore((s) => s.datasetSpec);
 
     return (
         <div className={`dm-node dm-node--result ${selected ? 'dm-node--selected' : ''}`}>
@@ -44,6 +47,14 @@ function ResultNode({ data, selected }) {
                 {data.summary && (
                     <div className="dm-node__meta res__summary">{data.summary}</div>
                 )}
+
+                <ResultChart
+                    chart_type={data.chart_type}
+                    columns={data.columns}
+                    spec={datasetSpec}
+                    significant={data.significant}
+                    aiAssisted={data.aiAssisted}
+                />
 
             </div>
 

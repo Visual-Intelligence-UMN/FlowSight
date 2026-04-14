@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import useDataModeStore from '../store/useDataModeStore';
 import { fetchHypothesis } from '../api/hypothesisService';
+import { resolveChartType } from '../api/chartTypeService';
+import InsightChart from './charts/InsightChart';
 import './nodes.css';
 
 const TYPE_META = {
@@ -18,11 +20,31 @@ const EDGE_HYPOTHESIS = {
 };
 
 function InsightNode({ id, data, selected }) {
-    const [hypStatus, setHypStatus] = useState('idle'); // 'idle' | 'loading' | 'error'
+    const [hypStatus,       setHypStatus]      = useState('idle'); // 'idle' | 'loading' | 'error'
+    const [resolvedChart,   setResolvedChart]  = useState(null);
+    const [resolvedColumns, setResolvedColumns] = useState([]);
+    const didResolve = useRef(false);
 
-    const removeNode = useDataModeStore((s) => s.removeNode);
+    const removeNode  = useDataModeStore((s) => s.removeNode);
+    const datasetSpec = useDataModeStore((s) => s.datasetSpec);
 
     const meta = TYPE_META[data.type] ?? { label: 'Insight' };
+
+    // Always ask AI for chart type + exact spec column names on first mount.
+    // Never rely on column name matching — AI has the full spec and returns exact names.
+    useEffect(() => {
+        if (didResolve.current || !datasetSpec) return;
+        didResolve.current = true;
+        resolveChartType(data, datasetSpec)
+            .then(({ chart_type, columns }) => {
+                setResolvedChart(chart_type);
+                setResolvedColumns(columns?.length ? columns : (data.columns_involved ?? []));
+            })
+            .catch(() => {
+                setResolvedChart(data.chart_type ?? null);
+                setResolvedColumns(data.columns_involved ?? []);
+            });
+    }, [datasetSpec]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Dismiss ──────────────────────────────────────────────────────────
 
@@ -105,6 +127,13 @@ function InsightNode({ id, data, selected }) {
                         ))}
                     </div>
                 )}
+
+                <InsightChart
+                    type={data.type}
+                    chart_type={resolvedChart}
+                    columns={resolvedColumns}
+                    spec={datasetSpec}
+                />
             </div>
 
             <div className="dm-node__actions">

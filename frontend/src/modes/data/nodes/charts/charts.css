@@ -1,0 +1,65 @@
+.ichart {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    width: 100%;
+}
+
+.ichart--result {
+    border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Axis label row below chart */
+.ichart__axis-labels {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+    flex-wrap: wrap;
+}
+
+.ichart__vs {
+    color: #cbd5e1;
+    font-size: 9px;
+}
+
+.ichart__outlier-note {
+    color: #ef4444;
+    font-size: 9px;
+    margin-left: auto;
+}
+
+/* Significance badges */
+.ichart__sig-badge {
+    margin-left: auto;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 20px;
+}
+
+.ichart__sig-badge--yes {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+}
+
+.ichart__sig-badge--no {
+    background: rgba(244, 63, 94, 0.1);
+    color: #f43f5e;
+}
+
+.ichart__sig-badge--ai {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+}
+
+/* Dark mode */
+[data-theme="dark"] .ichart {
+    border-top-color: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="dark"] .ichart__axis-labels {
+    color: #64748b;
+}
