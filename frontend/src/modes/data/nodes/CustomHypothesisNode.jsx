@@ -34,7 +34,9 @@ function CustomHypothesisNode({ id, data, selected }) {
     const [runError,     setRunError]    = useState('');
     const [done,         setDone]        = useState(false);
 
-    const removeNode = useDataModeStore((s) => s.removeNode);
+    const removeNode          = useDataModeStore((s) => s.removeNode);
+    const addHypothesisRecord = useDataModeStore((s) => s.addHypothesisRecord);
+    const addResultRecord     = useDataModeStore((s) => s.addResultRecord);
 
     // ── Step 1: Refine raw text ──────────────────────────────────────────
 
@@ -78,6 +80,20 @@ function CustomHypothesisNode({ id, data, selected }) {
             );
             setSuggestions(list);
             setSelectedIdx(0);
+            addHypothesisRecord({
+                nodeId:              id,
+                parentInsightNodeId: null,
+                label:               '',
+                title:               '',
+                statement,
+                type:                list[0]?.type ?? '',
+                variables,
+                directionality:      '',
+                suggestedTest:       list[0]?.test_name ?? '',
+                assumptionNotes:     '',
+                status:              'pending',
+                isCustom:            true,
+            });
         } catch (err) {
             setSuggestError(err.message ?? 'Failed to fetch suggestions.');
         } finally {
@@ -110,6 +126,18 @@ function CustomHypothesisNode({ id, data, selected }) {
         });
         addEdge({
             id: `e-${id}-${resultId}`, source: id, target: resultId, style: RESULT_EDGE,
+        });
+        addResultRecord({
+            nodeId:                 resultId,
+            parentHypothesisNodeId: id,
+            method:                 result.method ?? '',
+            testType:               result.testType ?? suggestion.test_name ?? '',
+            columns:                suggestion.variables ?? [],
+            stat:                   result.stat ?? null,
+            pValue:                 result.pValue ?? null,
+            significant:            result.significant ?? false,
+            summary:                result.summary ?? '',
+            aiAssisted:             result.aiAssisted ?? false,
         });
         setDone(true);
     }

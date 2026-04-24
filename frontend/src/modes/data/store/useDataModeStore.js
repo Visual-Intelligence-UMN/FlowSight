@@ -5,6 +5,11 @@ import { create } from 'zustand';
  *
  * Single source of truth for all Data Mode state.
  * Completely isolated from Q&A Mode.
+ *
+ * Analysis records (dataset, insights, hypotheses, results) are a parallel
+ * flat registry alongside the React Flow graph. They are written once at node
+ * creation and never derived from node.data at query time. Use
+ * buildAnalysisContext() from analysisContext.js to assemble them for AI calls.
  */
 const useDataModeStore = create((set, get) => ({
 
@@ -15,17 +20,8 @@ const useDataModeStore = create((set, get) => ({
     // ── Selection ────────────────────────────────────────────
     selectedNode: null,
 
-    // ── Dataset ──────────────────────────────────────────────
-    // Metadata: { name, rowCount, columnCount, source }
+    // ── Dataset (raw, used by stats engine + chart renderers) ─
     datasetMetadata: null,
-    // Spec: {
-    //   rowCount, columnCount, numericCount, categoricalCount,
-    //   columns: [{
-    //     name, type, missing_count, unique_count, total_count,
-    //     stats:      { mean, median, min, max, std }   // numeric
-    //     top_values: [{ value, count }]                // categorical/datetime
-    //   }]
-    // }
     datasetSpec: null,
 
     // ── AI output ────────────────────────────────────────────
@@ -35,79 +31,203 @@ const useDataModeStore = create((set, get) => ({
     datasetDescription: '',
 
     // ── Pipeline progress ────────────────────────────────────
-    // e.g. 'idle' | 'dataset' | 'hypothesis' | 'test' | 'result' | 'insight'
     workflowStep: 'idle',
 
-    // ── API key (user-supplied, stored in sessionStorage) ────────────
+    // ── API key (user-supplied, stored in sessionStorage) ────
     apiKey: sessionStorage.getItem('sv_openai_key') || '',
 
+    // ── Analysis records ──────────────────────────────────────
+    // DatasetRecord: clean summary for AI context (no raw_values / histograms)
+    // {
+    //   name, source, rowCount, columnCount, numericCount, categoricalCount,
+    //   description,
+    //   columnSummaries: [{
+    //     name, type, missing, unique,
+    //     stats?: { mean, median, min, max, std },
+    //     topValues?: [{ value, count }]
+    //   }]
+    // }
+    dataset: null,
 
-    // ── Actions ──────────────────────────────────────────────
+    // InsightRecord map: nodeId → record
+    // {
+    //   nodeId, insightId, title, type, description,
+    //   columnsInvolved, reason,
+    //   resolvedChartType: string|null, resolvedColumns: string[],
+    //   createdAt
+    // }
+    insights: new Map(),
 
-    /** Replace the full nodes array (mirrors ReactFlow's setNodes signature) */
+    // HypothesisRecord map: nodeId → record
+    // {
+    //   nodeId, parentInsightNodeId: string|null,
+    //   label, title, statement, type, variables,
+    //   directionality, suggestedTest, assumptionNotes,
+    //   status: 'pending'|'accepted'|'rejected',
+    //   isCustom, createdAt
+    // }
+    hypotheses: new Map(),
+
+    // ResultRecord map: nodeId → record
+    // {
+    //   nodeId, parentHypothesisNodeId,
+    //   method, testType, columns,
+    //   stat, pValue, significant, summary,
+    //   aiAssisted, createdAt
+    // }
+    results: new Map(),
+
+
+    // ── Graph actions ─────────────────────────────────────────
+
     setNodes: (nodes) => set({
         nodes: typeof nodes === 'function' ? nodes(get().nodes) : nodes,
     }),
 
-    /** Replace the full edges array */
     setEdges: (edges) => set({
         edges: typeof edges === 'function' ? edges(get().edges) : edges,
     }),
 
-    /** Append a single node */
     addNode: (node) => set((state) => ({ nodes: [...state.nodes, node] })),
 
-    /** Append a single edge */
     addEdge: (edge) => set((state) => ({ edges: [...state.edges, edge] })),
 
-    /** Set the currently selected node (null to clear) */
     setSelectedNode: (node) => set({ selectedNode: node }),
 
-    /**
-     * Load dataset info into the store.
-     * @param {{ metadata: object, spec: object }} payload
-     */
-    setDataset: ({ metadata, spec }) => set({
-        datasetMetadata: metadata,
-        datasetSpec: spec,
-        workflowStep: 'dataset',
-    }),
-
-    /** Update AI-generated insight suggestions */
-    setInsights: (suggestions) => set({
-        insightSuggestions: suggestions,
-        workflowStep: 'insight',
-    }),
-
-    /** Set or update the user-editable dataset description */
-    setDatasetDescription: (text) => set({ datasetDescription: text }),
-
-    /** Store the user-supplied OpenAI API key in state + sessionStorage */
-    setApiKey: (key) => {
-        sessionStorage.setItem('sv_openai_key', key);
-        set({ apiKey: key });
-    },
-
-    /** Clear all nodes and edges (used before loading a new dataset) */
-    resetGraph: () => set({ nodes: [], edges: [], datasetDescription: '' }),
-
-    /**
-     * Remove a node and all edges connected to it.
-     * Used by node-level "Ignore" actions.
-     */
-    removeNode: (nodeId) => set((state) => ({
-        nodes: state.nodes.filter((n) => n.id !== nodeId),
-        edges: state.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
-    })),
-
-    /**
-     * Merge data into an existing node's data field.
-     */
     updateNodeData: (nodeId, patch) => set((state) => ({
         nodes: state.nodes.map((n) =>
             n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n
         ),
     })),
+
+    removeNode: (nodeId) => set((state) => ({
+        nodes: state.nodes.filter((n) => n.id !== nodeId),
+        edges: state.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+    })),
+
+    // ── Dataset actions ───────────────────────────────────────
+
+    setDataset: ({ metadata, spec }) => {
+        const columnSummaries = (spec.columns ?? []).map((c) => {
+            const summary = {
+                name:    c.name,
+                type:    c.type,
+                missing: c.missing_count,
+                unique:  c.unique_count,
+            };
+            if (c.type === 'numeric' && c.stats) {
+                const { mean, median, min, max, std } = c.stats;
+                summary.stats = { mean, median, min, max, std };
+            }
+            if (c.top_values?.length) {
+                summary.topValues = c.top_values;
+            }
+            return summary;
+        });
+
+        const datasetRecord = {
+            name:             metadata.name,
+            source:           metadata.source,
+            rowCount:         spec.rowCount,
+            columnCount:      spec.columnCount,
+            numericCount:     spec.numericCount,
+            categoricalCount: spec.categoricalCount,
+            description:      get().datasetDescription || '',
+            columnSummaries,
+        };
+
+        set({
+            datasetMetadata: metadata,
+            datasetSpec:     spec,
+            dataset:         datasetRecord,
+            workflowStep:    'dataset',
+        });
+    },
+
+    setDatasetDescription: (text) => set((state) => ({
+        datasetDescription: text,
+        dataset: state.dataset ? { ...state.dataset, description: text } : state.dataset,
+    })),
+
+    setInsights: (suggestions) => set({
+        insightSuggestions: suggestions,
+        workflowStep: 'insight',
+    }),
+
+    setApiKey: (key) => {
+        sessionStorage.setItem('sv_openai_key', key);
+        set({ apiKey: key });
+    },
+
+    resetGraph: () => set({
+        nodes:       [],
+        edges:       [],
+        datasetDescription: '',
+        dataset:     null,
+        insights:    new Map(),
+        hypotheses:  new Map(),
+        results:     new Map(),
+    }),
+
+    // ── Analysis record actions ───────────────────────────────
+
+    addInsightRecord: (record) => set((state) => {
+        const next = new Map(state.insights);
+        next.set(record.nodeId, { ...record, createdAt: Date.now() });
+        return { insights: next };
+    }),
+
+    /** Called by InsightNode after resolveChartType() resolves */
+    resolveInsightChart: (nodeId, chartType, columns) => {
+        set((state) => {
+            const next = new Map(state.insights);
+            const existing = next.get(nodeId);
+            if (existing) {
+                next.set(nodeId, {
+                    ...existing,
+                    resolvedChartType: chartType,
+                    resolvedColumns:   columns ?? [],
+                });
+            }
+            return { insights: next };
+        });
+        // Also patch node.data so InsightChart re-renders with the resolved values
+        get().updateNodeData(nodeId, { chart_type: chartType, resolvedColumns: columns ?? [] });
+    },
+
+    addHypothesisRecord: (record) => set((state) => {
+        const next = new Map(state.hypotheses);
+        next.set(record.nodeId, { ...record, createdAt: Date.now() });
+        return { hypotheses: next };
+    }),
+
+    /** Called when user edits hypothesis statement inline */
+    updateHypothesisStatement: (nodeId, statement) => {
+        set((state) => {
+            const next = new Map(state.hypotheses);
+            const existing = next.get(nodeId);
+            if (existing) next.set(nodeId, { ...existing, statement });
+            return { hypotheses: next };
+        });
+        get().updateNodeData(nodeId, { statement });
+    },
+
+    /** Called when hypothesis status changes (accept/reject) */
+    updateHypothesisStatus: (nodeId, status) => {
+        set((state) => {
+            const next = new Map(state.hypotheses);
+            const existing = next.get(nodeId);
+            if (existing) next.set(nodeId, { ...existing, status });
+            return { hypotheses: next };
+        });
+        get().updateNodeData(nodeId, { status });
+    },
+
+    addResultRecord: (record) => set((state) => {
+        const next = new Map(state.results);
+        next.set(record.nodeId, { ...record, createdAt: Date.now() });
+        return { results: next };
+    }),
 
 }));
 

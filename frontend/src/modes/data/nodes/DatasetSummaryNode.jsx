@@ -111,6 +111,7 @@ function ExpandedSummary({ id, spec, selected }) {
             const spacing  = 320;
             const startX   = pos.x - ((insights.length - 1) * spacing) / 2;
 
+            const { addInsightRecord } = useDataModeStore.getState();
             insights.forEach((insight, i) => {
                 addNode({
                     id:       insight.id,
@@ -124,6 +125,17 @@ function ExpandedSummary({ id, spec, selected }) {
                     sourceHandle: 'insights-out',
                     target:       insight.id,
                     style:        EDGE_INSIGHT,
+                });
+                addInsightRecord({
+                    nodeId:          insight.id,
+                    insightId:       insight.id,
+                    title:           insight.title ?? '',
+                    type:            insight.type ?? '',
+                    description:     insight.description ?? '',
+                    columnsInvolved: insight.columns_involved ?? [],
+                    reason:          insight.reason ?? '',
+                    resolvedChartType: null,
+                    resolvedColumns:   [],
                 });
             });
 

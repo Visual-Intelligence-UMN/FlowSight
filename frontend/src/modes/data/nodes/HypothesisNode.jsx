@@ -25,7 +25,10 @@ const RESULT_EDGE = {
 };
 
 function HypothesisNode({ id, data, selected }) {
-    const updateNodeData = useDataModeStore((s) => s.updateNodeData);
+    const updateNodeData          = useDataModeStore((s) => s.updateNodeData);
+    const addResultRecord         = useDataModeStore((s) => s.addResultRecord);
+    const updateHypothesisStatus  = useDataModeStore((s) => s.updateHypothesisStatus);
+    const updateHypothesisStatement = useDataModeStore((s) => s.updateHypothesisStatement);
     const [editing, setEditing]       = useState(false);
     const [draft, setDraft]           = useState('');
     // 'idle' | 'running' | 'needs_consent' | 'error'
@@ -41,16 +44,16 @@ function HypothesisNode({ id, data, selected }) {
         setDraft(data.statement ?? '');
         setEditing(true);
     };
-    const saveEdit   = () => { updateNodeData(id, { statement: draft }); setEditing(false); };
+    const saveEdit   = () => { updateHypothesisStatement(id, draft); setEditing(false); };
     const cancelEdit = () => setEditing(false);
 
     const handleAccept = (e) => {
         e.stopPropagation();
-        updateNodeData(id, { status: status === 'accepted' ? 'pending' : 'accepted' });
+        updateHypothesisStatus(id, status === 'accepted' ? 'pending' : 'accepted');
     };
     const handleReject = (e) => {
         e.stopPropagation();
-        updateNodeData(id, { status: status === 'rejected' ? 'pending' : 'rejected' });
+        updateHypothesisStatus(id, status === 'rejected' ? 'pending' : 'rejected');
     };
 
     // ── Spawn a ResultNode below this hypothesis ──────────────────────────
@@ -65,15 +68,17 @@ function HypothesisNode({ id, data, selected }) {
             .filter((tid) => nodes.find((n) => n.id === tid)?.type === 'result')
             .length;
 
-        const resultId = `result-${id}-${Date.now()}`;
+        const resultId  = `result-${id}-${Date.now()}`;
+        const columns   = data.variables ?? [];
+        const testType  = data.suggested_test ?? '';
         addNode({
             id:       resultId,
             type:     'result',
             position: { x: pos.x + siblings * 380, y: pos.y + 280 },
             data:     {
                 ...result,
-                columns:   data.variables   ?? [],
-                testType:  data.suggested_test ?? '',
+                columns,
+                testType,
                 chart_type: data.chart_type ?? '',
             },
         });
@@ -82,6 +87,18 @@ function HypothesisNode({ id, data, selected }) {
             source: id,
             target: resultId,
             style:  RESULT_EDGE,
+        });
+        addResultRecord({
+            nodeId:                  resultId,
+            parentHypothesisNodeId:  id,
+            method:                  result.method ?? '',
+            testType:                result.testType ?? testType,
+            columns,
+            stat:                    result.stat ?? null,
+            pValue:                  result.pValue ?? null,
+            significant:             result.significant ?? false,
+            summary:                 result.summary ?? '',
+            aiAssisted:              result.aiAssisted ?? false,
         });
     }
 

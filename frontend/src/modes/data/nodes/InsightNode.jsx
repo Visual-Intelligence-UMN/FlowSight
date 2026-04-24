@@ -25,8 +25,10 @@ function InsightNode({ id, data, selected }) {
     const [resolvedColumns, setResolvedColumns] = useState([]);
     const didResolve = useRef(false);
 
-    const removeNode  = useDataModeStore((s) => s.removeNode);
-    const datasetSpec = useDataModeStore((s) => s.datasetSpec);
+    const removeNode          = useDataModeStore((s) => s.removeNode);
+    const datasetSpec         = useDataModeStore((s) => s.datasetSpec);
+    const resolveInsightChart = useDataModeStore((s) => s.resolveInsightChart);
+    const addHypothesisRecord = useDataModeStore((s) => s.addHypothesisRecord);
 
     const meta = TYPE_META[data.type] ?? { label: 'Insight' };
 
@@ -37,8 +39,10 @@ function InsightNode({ id, data, selected }) {
         didResolve.current = true;
         resolveChartType(data, datasetSpec)
             .then(({ chart_type, columns }) => {
+                const cols = columns?.length ? columns : (data.columns_involved ?? []);
                 setResolvedChart(chart_type);
-                setResolvedColumns(columns?.length ? columns : (data.columns_involved ?? []));
+                setResolvedColumns(cols);
+                resolveInsightChart(id, chart_type, cols);
             })
             .catch(() => {
                 setResolvedChart(data.chart_type ?? null);
@@ -95,6 +99,21 @@ function InsightNode({ id, data, selected }) {
                 source: id,
                 target: hypId,
                 style:  EDGE_HYPOTHESIS,
+            });
+
+            addHypothesisRecord({
+                nodeId:               hypId,
+                parentInsightNodeId:  id,
+                label:                hypothesis.label ?? '',
+                title:                hypothesis.title ?? '',
+                statement:            hypothesis.statement ?? '',
+                type:                 hypothesis.type ?? '',
+                variables:            hypothesis.variables ?? [],
+                directionality:       hypothesis.directionality ?? '',
+                suggestedTest:        hypothesis.suggested_test ?? '',
+                assumptionNotes:      hypothesis.assumption_notes ?? '',
+                status:               'pending',
+                isCustom:             false,
             });
 
             setHypStatus('idle');
