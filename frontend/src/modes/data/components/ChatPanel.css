@@ -290,6 +290,70 @@
     text-align: center;
 }
 
+/* Visualization card */
+.cpc__visual-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dm-text-primary);
+    margin-bottom: 2px;
+}
+
+.cpc__visual-subtitle {
+    font-size: 10px;
+    color: var(--dm-text-muted);
+    text-transform: capitalize;
+    margin-bottom: 8px;
+}
+
+.cpc__chart-wrap {
+    margin-top: 8px;
+}
+
+.cpc__pie-block {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+}
+
+.cpc__pie-legend {
+    display: grid;
+    gap: 4px;
+}
+
+.cpc__pie-legend-item {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+}
+
+.cpc__pie-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+}
+
+.cpc__pie-name {
+    color: var(--dm-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cpc__pie-value {
+    color: var(--dm-text-primary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.cpc__overview-visual {
+    margin-top: 10px;
+}
+
+.cpc__overview-visual .cpc__card {
+    background: var(--dm-node-item-bg);
+}
+
 /* Raw fallback */
 .cpc__raw {
     font-size: 10px;

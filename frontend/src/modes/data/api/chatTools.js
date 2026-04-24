@@ -22,6 +22,37 @@ export const TOOL_DEFINITIONS = [
     {
         type: 'function',
         function: {
+            name: 'describe_columns',
+            description: 'Describe one or more columns with nicely structured stats and, by default, an appropriate visualization. Use this for requests like "tell me about X", "describe X", "what is in X", or "summarize X". Unless the user explicitly says not to show visuals, keep show_visual true.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    columns: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Exact dataset column names to describe. If omitted in a follow-up like "show a pie chart", the tool may infer the column from recent conversation context.',
+                    },
+                    show_visual: {
+                        type: 'boolean',
+                        description: 'Whether to include a visualization. Default true unless the user explicitly asks for text only or no chart.',
+                    },
+                    preferred_chart: {
+                        type: 'string',
+                        enum: ['auto', 'pie', 'category_frequency', 'histogram', 'grouped_bar', 'scatter', 'correlation_heatmap'],
+                        description: 'Optional chart preference. Use "auto" if the user did not specify.',
+                    },
+                    title: {
+                        type: 'string',
+                        description: 'Optional short title for the visual card.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
             name: 'get_column_stats',
             description: 'Get statistics for one or more columns: type, missing/unique counts, numeric stats (mean/median/min/max/std) or top categorical values.',
             parameters: {
@@ -120,6 +151,33 @@ export const TOOL_DEFINITIONS = [
     {
         type: 'function',
         function: {
+            name: 'generate_visualization',
+            description: 'Generate a visualization from one or more dataset columns. Use this whenever the user asks to draw, chart, plot, visualize, or show a graph.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    columns: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Exact dataset column names to visualize.',
+                    },
+                    preferred_chart: {
+                        type: 'string',
+                        enum: ['auto', 'pie', 'category_frequency', 'histogram', 'grouped_bar', 'scatter', 'correlation_heatmap'],
+                        description: 'Preferred chart type. Use "auto" if the user did not specify a chart type.',
+                    },
+                    title: {
+                        type: 'string',
+                        description: 'Optional short title for the chart card.',
+                    },
+                },
+                required: ['columns'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
             name: 'get_analysis_summary',
             description: 'Get the current analysis graph summary: all insights, hypotheses with their status, and test results.',
             parameters: { type: 'object', properties: {}, required: [] },
@@ -128,6 +186,88 @@ export const TOOL_DEFINITIONS = [
 ];
 
 // ── Tool executors ─────────────────────────────────────────────────────────────
+
+function normalizeColumnNames(columns, spec) {
+    return (columns ?? [])
+        .map((name) => spec.columns.find((c) => c.name === name)?.name ?? null)
+        .filter(Boolean);
+}
+
+function findColumnsInText(text, spec) {
+    if (!text) return [];
+    const lower = text.toLowerCase();
+    return [...spec.columns]
+        .sort((a, b) => b.name.length - a.name.length)
+        .filter((c) => lower.includes(c.name.toLowerCase()))
+        .map((c) => c.name);
+}
+
+function resolveColumns(args, spec, messages, fallbackCount = 1) {
+    const explicit = normalizeColumnNames(args.columns, spec);
+    if (explicit.length) return explicit;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (!['user', 'assistant'].includes(msg.role)) continue;
+        if (typeof msg.content !== 'string') continue;
+        const inferred = findColumnsInText(msg.content, spec);
+        if (inferred.length) {
+            return [...new Set(inferred)].slice(0, fallbackCount);
+        }
+    }
+
+    return [];
+}
+
+function getLastUserText(messages) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i]?.role === 'user' && typeof messages[i].content === 'string') {
+            return messages[i].content;
+        }
+    }
+    return '';
+}
+
+function parseToolContent(msg) {
+    if (msg?.role !== 'tool' || typeof msg.content !== 'string') return null;
+    try {
+        return JSON.parse(msg.content);
+    } catch {
+        return null;
+    }
+}
+
+function getRecentVisualForColumns(messages, columns) {
+    const wanted = new Set(columns ?? []);
+    if (!wanted.size) return null;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const parsed = parseToolContent(messages[i]);
+        if (!parsed) continue;
+
+        if (parsed.type === 'visual') {
+            const cols = parsed.columns ?? [];
+            if (cols.length === wanted.size && cols.every((c) => wanted.has(c))) {
+                return parsed;
+            }
+        }
+
+        if (parsed.type === 'column_overview' && parsed.visual) {
+            const cols = parsed.visual.columns ?? [];
+            if (cols.length === wanted.size && cols.every((c) => wanted.has(c))) {
+                return parsed.visual;
+            }
+        }
+    }
+
+    return null;
+}
+
+function shouldAvoidPreviousVisual(messages) {
+    const text = getLastUserText(messages).toLowerCase();
+    return /(other|another|different|else|instead)/.test(text)
+        && /(visual|chart|graph|plot)/.test(text);
+}
 
 function execGetColumnStats(args, spec) {
     const columns = (args.columns ?? []).map((name) => {
@@ -218,18 +358,191 @@ function execCorrelation(args, spec) {
     return { type: 'correlation', cols: result.cols, matrix: result.matrix };
 }
 
+function countValues(rawValues, limit = 7) {
+    const counts = new Map();
+    for (const raw of rawValues ?? []) {
+        const key = String(raw ?? '').trim();
+        if (!key) continue;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, limit).map(([name, value]) => ({ name, value }));
+    const other = sorted.slice(limit).reduce((sum, [, value]) => sum + value, 0);
+    if (other > 0) top.push({ name: 'Other', value: other });
+    return top;
+}
+
+function inferVisualization(columns, preferredChart, spec, options = {}) {
+    const resolved = columns
+        .map((name) => spec.columns.find((c) => c.name === name))
+        .filter(Boolean);
+
+    if (!resolved.length) {
+        return { error: 'No valid columns were provided.' };
+    }
+
+    const numeric = resolved.filter((c) => c.type === 'numeric');
+    const categorical = resolved.filter((c) => c.type !== 'numeric');
+    const chart = preferredChart ?? 'auto';
+    const avoidChart = options.avoidChart ?? null;
+
+    const chooseAlt = (primary, alternate) => primary === avoidChart ? alternate : primary;
+
+    if (chart === 'pie') {
+        if (categorical.length < 1) return { error: 'Pie charts require a categorical column.' };
+        return { chartType: 'pie', columns: [categorical[0].name] };
+    }
+
+    if (chart === 'category_frequency') {
+        if (categorical.length < 1) return { error: 'Category frequency charts require a categorical column.' };
+        return { chartType: 'category_frequency', columns: [categorical[0].name] };
+    }
+
+    if (chart === 'histogram') {
+        if (numeric.length < 1) return { error: 'Histograms require a numeric column.' };
+        return { chartType: 'histogram', columns: [numeric[0].name] };
+    }
+
+    if (chart === 'grouped_bar') {
+        if (categorical.length < 1 || numeric.length < 1) {
+            return { error: 'Grouped bar charts require one categorical column and one numeric column.' };
+        }
+        return { chartType: 'grouped_bar', columns: [categorical[0].name, numeric[0].name] };
+    }
+
+    if (chart === 'scatter') {
+        if (numeric.length < 2) return { error: 'Scatter plots require two numeric columns.' };
+        return { chartType: 'scatter', columns: [numeric[0].name, numeric[1].name] };
+    }
+
+    if (chart === 'correlation_heatmap') {
+        const cols = numeric.map((c) => c.name);
+        if (cols.length < 2) return { error: 'Correlation heatmaps require at least two numeric columns.' };
+        return { chartType: 'correlation_heatmap', columns: cols };
+    }
+
+    if (categorical.length === 1 && numeric.length === 0) {
+        const distinct = categorical[0].unique_count ?? 0;
+        return {
+            chartType: distinct <= 6
+                ? chooseAlt('pie', 'category_frequency')
+                : chooseAlt('category_frequency', 'pie'),
+            columns: [categorical[0].name],
+        };
+    }
+    if (numeric.length === 1 && categorical.length === 0) {
+        return { chartType: 'histogram', columns: [numeric[0].name] };
+    }
+    if (numeric.length >= 2 && categorical.length === 0) {
+        if (preferredChart === 'auto' && numeric.length > 2) {
+            return {
+                chartType: chooseAlt('correlation_heatmap', 'scatter'),
+                columns: avoidChart === 'correlation_heatmap'
+                    ? [numeric[0].name, numeric[1].name]
+                    : numeric.map((c) => c.name),
+            };
+        }
+        return {
+            chartType: chooseAlt('scatter', numeric.length > 2 ? 'correlation_heatmap' : 'scatter'),
+            columns: avoidChart === 'scatter' && numeric.length > 2
+                ? numeric.map((c) => c.name)
+                : [numeric[0].name, numeric[1].name],
+        };
+    }
+    if (categorical.length >= 1 && numeric.length >= 1) {
+        return { chartType: 'grouped_bar', columns: [categorical[0].name, numeric[0].name] };
+    }
+
+    return { error: 'Could not determine a compatible chart for those columns.' };
+}
+
+function buildVisualPayload(args, spec, messages) {
+    const preferredChart = args.preferred_chart ?? 'auto';
+    const sourceColumns = resolveColumns(args, spec, messages, preferredChart === 'correlation_heatmap' ? 6 : 2);
+    const priorVisual = shouldAvoidPreviousVisual(messages)
+        ? getRecentVisualForColumns(messages, sourceColumns)
+        : null;
+    const resolved = inferVisualization(sourceColumns, preferredChart, spec, {
+        avoidChart: preferredChart === 'auto' ? priorVisual?.chartType ?? null : null,
+    });
+    if (resolved.error) {
+        return { error: resolved.error, requestedColumns: args.columns ?? [] };
+    }
+
+    const result = {
+        chartType: resolved.chartType,
+        columns: resolved.columns,
+        title: args.title?.trim() || null,
+    };
+
+    if (resolved.chartType === 'pie') {
+        const col = spec.columns.find((c) => c.name === resolved.columns[0]);
+        result.series = countValues(col?.raw_values ?? []);
+    }
+
+    if (resolved.chartType === 'correlation_heatmap') {
+        const filteredSpec = {
+            ...spec,
+            columns: spec.columns.filter((c) => resolved.columns.includes(c.name)),
+        };
+        const matrix = getCorrelationMatrix(filteredSpec);
+        if (!matrix) {
+            return { type: 'visual', error: 'Not enough numeric columns for a correlation heatmap.' };
+        }
+        result.cols = matrix.cols;
+        result.matrix = matrix.matrix;
+    }
+
+    return result;
+}
+
+function execDescribeColumns(args, spec, messages) {
+    const columns = resolveColumns(args, spec, messages, 2);
+    if (!columns.length) {
+        return { type: 'column_overview', error: 'No valid columns were provided or inferred from recent context.' };
+    }
+
+    const stats = execGetColumnStats({ columns }, spec);
+    const showVisual = args.show_visual !== false;
+    let visual = null;
+
+    if (showVisual) {
+        const visualPayload = buildVisualPayload(args, spec, messages);
+        if (!visualPayload.error) {
+            visual = { type: 'visual', ...visualPayload };
+        }
+    }
+
+    return {
+        type: 'column_overview',
+        columns: stats.columns,
+        showVisual,
+        visual,
+    };
+}
+
+function execGenerateVisualization(args, spec, messages) {
+    const payload = buildVisualPayload(args, spec, messages);
+    if (payload.error) {
+        return { type: 'visual', error: payload.error, requestedColumns: args.columns ?? [] };
+    }
+    return { type: 'visual', ...payload };
+}
+
 function execAnalysisSummary() {
     const ctx = buildAnalysisContext(useDataModeStore.getState());
     return { type: 'summary', ...ctx };
 }
 
-export function executeTool(name, args, spec) {
+export function executeTool(name, args, spec, messages = []) {
     switch (name) {
+        case 'describe_columns':       return execDescribeColumns(args, spec, messages);
         case 'get_column_stats':       return execGetColumnStats(args, spec);
         case 'get_column_values':      return execGetColumnValues(args, spec);
         case 'run_statistical_test':   return execRunTest(args, spec);
         case 'filter_and_describe':    return execFilterAndDescribe(args, spec);
         case 'get_correlation_matrix': return execCorrelation(args, spec);
+        case 'generate_visualization': return execGenerateVisualization(args, spec, messages);
         case 'get_analysis_summary':   return execAnalysisSummary();
         default: return { type: 'error', message: `Unknown tool: ${name}` };
     }
@@ -241,7 +554,12 @@ function buildSystemPrompt() {
     const ctx  = buildAnalysisContext(useDataModeStore.getState());
     const name = ctx.dataset?.name ?? 'the dataset';
     return `You are a concise statistical analysis assistant for the dataset "${name}".
-Use tools when the user asks for specific stats, correlations, tests, or filtered data.
+Use tools when the user asks for specific stats, correlations, tests, filtered data, or charts.
+For simple column questions like "tell me about column X" or "describe X", prefer describe_columns so the response includes both structured stats and a useful visual by default.
+If the user asks to draw, plot, chart, or visualize something, call generate_visualization instead of saying you cannot create visuals directly.
+If the user says "don't show visuals", "text only", or equivalent, set show_visual to false.
+For follow-up visualization requests like "draw a pie chart" or "show a graph", infer the intended column from the recent conversation when possible.
+If the user asks for another, different, or some other visual, do not repeat the same chart type unless they explicitly requested it.
 Answer concisely. Do not repeat tool output verbatim — interpret and explain it.
 
 Current analysis context:
@@ -332,7 +650,7 @@ async function doStream(messages, spec, callbacks, depth = 0) {
         const toolMessages = list.map((tc) => {
             let args = {};
             try { args = JSON.parse(tc.args); } catch { /* malformed args */ }
-            const result = executeTool(tc.name, args, spec);
+            const result = executeTool(tc.name, args, spec, messages);
             callbacks.onToolResult?.({ toolName: tc.name, result });
             return { role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) };
         });

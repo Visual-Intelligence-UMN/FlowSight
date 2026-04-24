@@ -364,6 +364,53 @@
     padding: 24px 8px;
 }
 
+.dm-chat__empty-state {
+    width: 100%;
+    max-width: 280px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.dm-chat__empty-copy {
+    font-size: 12px;
+    color: var(--dm-text-muted);
+}
+
+.dm-chat__starters {
+    width: 100%;
+    display: grid;
+    gap: 10px;
+}
+
+.dm-chat__starter {
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--dm-bg-panel) 0%, var(--dm-node-item-bg) 100%);
+    border: 1px solid var(--dm-border-panel);
+    color: var(--dm-text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.dm-chat__starter:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: var(--dm-accent-mid);
+    background: linear-gradient(180deg, var(--dm-accent-dim) 0%, var(--dm-node-item-bg) 100%);
+    color: var(--dm-text-primary);
+}
+
+.dm-chat__starter:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 /* Message bubbles (for when we wire it up) */
 .dm-chat__msg {
     font-size: 12.5px;
@@ -440,9 +487,9 @@
 }
 
 .dm-sidebar__section-label {
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--dm-section-label);
     margin-bottom: 12px;

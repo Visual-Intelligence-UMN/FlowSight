@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, Component } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
-    BarChart, Bar, ScatterChart, Scatter,
+    BarChart, Bar, ScatterChart, Scatter, PieChart, Pie, Cell,
     XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import useDataModeStore from '../store/useDataModeStore';
@@ -11,6 +11,7 @@ import './ChatPanel.css';
 
 const TICK  = { fontSize: 8, fill: '#94a3b8' };
 const MARGIN = { top: 4, right: 4, bottom: 2, left: -20 };
+const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#14b8a6', '#a855f7', '#64748b'];
 
 // ── Error boundary (prevents tool card crashes from killing the page) ─────────
 
@@ -109,6 +110,42 @@ function MiniComparisonBar({ subset, full, label }) {
                 <Bar dataKey="mean" fill="#a855f7" opacity={0.8} radius={[2, 2, 0, 0]} isAnimationActive={false} />
             </BarChart>
         </ResponsiveContainer>
+    );
+}
+
+function MiniPie({ series }) {
+    if (!series?.length) return null;
+    return (
+        <div className="cpc__pie-block">
+            <ResponsiveContainer width="100%" height={130}>
+                <PieChart>
+                    <Pie
+                        data={series}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={26}
+                        outerRadius={46}
+                        paddingAngle={2}
+                        isAnimationActive={false}
+                    >
+                        {series.map((entry, i) => (
+                            <Cell key={`${entry.name}-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ fontSize: 9, padding: '2px 6px' }}
+                        formatter={(v) => [v, 'Count']} />
+                </PieChart>
+            </ResponsiveContainer>
+            <div className="cpc__pie-legend">
+                {series.map((entry, i) => (
+                    <div key={`${entry.name}-legend`} className="cpc__pie-legend-item">
+                        <span className="cpc__pie-swatch" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                        <span className="cpc__pie-name">{entry.name}</span>
+                        <span className="cpc__pie-value">{entry.value}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 }
 
@@ -322,13 +359,173 @@ function SummaryCard({ stats }) {
     );
 }
 
+function CorrelationHeatmapGraphic({ cols, matrix }) {
+    const maxCols = 7;
+    const names   = cols.slice(0, maxCols);
+    const mat     = matrix.slice(0, maxCols).map((row) => row.slice(0, maxCols));
+    const CELL = 34, PAD = 58;
+    const W = PAD + names.length * CELL;
+    const H = PAD + names.length * CELL;
+    const cellColor = (r) => {
+        if (r > 0) return `rgba(99,102,241,${(r * 0.85).toFixed(2)})`;
+        if (r < 0) return `rgba(244,63,94,${(Math.abs(r) * 0.85).toFixed(2)})`;
+        return 'rgba(148,163,184,0.12)';
+    };
+
+    return (
+        <div className="cpc__heatmap-wrap">
+            <svg width={W} height={H} style={{ overflow: 'visible' }}>
+                {names.map((name, i) => (
+                    <text key={`cl-${i}`}
+                        x={PAD + i * CELL + CELL / 2} y={PAD - 4}
+                        textAnchor="end" fontSize={8} fill="#94a3b8"
+                        transform={`rotate(-35,${PAD + i * CELL + CELL / 2},${PAD - 4})`}>
+                        {name.length > 9 ? `${name.slice(0, 8)}…` : name}
+                    </text>
+                ))}
+                {names.map((name, i) => (
+                    <text key={`rl-${i}`}
+                        x={PAD - 4} y={PAD + i * CELL + CELL / 2 + 3}
+                        textAnchor="end" fontSize={8} fill="#94a3b8">
+                        {name.length > 9 ? `${name.slice(0, 8)}…` : name}
+                    </text>
+                ))}
+                {mat.map((row, ri) => row.map((r, ci) => (
+                    <g key={`${ri}-${ci}`}>
+                        <rect x={PAD + ci * CELL} y={PAD + ri * CELL}
+                            width={CELL - 1} height={CELL - 1}
+                            fill={cellColor(r)} rx={3} />
+                        <text x={PAD + ci * CELL + CELL / 2} y={PAD + ri * CELL + CELL / 2 + 3}
+                            textAnchor="middle" fontSize={7.5}
+                            fill={Math.abs(r) > 0.4 ? '#fff' : '#64748b'}
+                            fontWeight={ri === ci ? '700' : '400'}>
+                            {r.toFixed(2)}
+                        </text>
+                    </g>
+                )))}
+            </svg>
+        </div>
+    );
+}
+
+function VisualCard({ chartType, columns, title, series, cols, matrix, error, spec }) {
+    if (error) {
+        return (
+            <div className="cpc__card cpc__card--visual">
+                <div className="cpc__card-label">Visualization</div>
+                <div className="cpc__error-inline">{error}</div>
+            </div>
+        );
+    }
+
+    const resolved = (columns ?? []).map((name) => spec?.columns.find((c) => c.name === name)).filter(Boolean);
+    const numeric = resolved.filter((c) => c.type === 'numeric');
+    const categorical = resolved.filter((c) => c.type !== 'numeric');
+
+    let chart = null;
+    if (chartType === 'pie') {
+        chart = <MiniPie series={series} />;
+    } else if (chartType === 'category_frequency' && categorical[0]) {
+        chart = <MiniFrequencyBar col={categorical[0]} />;
+    } else if (chartType === 'histogram' && numeric[0]) {
+        chart = <MiniHistogram col={numeric[0]} />;
+    } else if (chartType === 'grouped_bar' && categorical[0] && numeric[0]) {
+        chart = <MiniGroupBar catCol={categorical[0]} numCol={numeric[0]} />;
+    } else if (chartType === 'scatter' && numeric.length >= 2) {
+        chart = <MiniScatter col1={numeric[0]} col2={numeric[1]} />;
+    } else if (chartType === 'correlation_heatmap' && cols?.length && matrix?.length) {
+        chart = <CorrelationHeatmapGraphic cols={cols} matrix={matrix} />;
+    }
+
+    return (
+        <div className="cpc__card cpc__card--visual">
+            <div className="cpc__card-label">Visualization</div>
+            {(title || columns?.length) && (
+                <div className="cpc__visual-title">
+                    {title || columns.join(' · ')}
+                </div>
+            )}
+            {columns?.length > 0 && (
+                <div className="cpc__visual-subtitle">
+                    {chartType.replace(/_/g, ' ')} · {columns.join(', ')}
+                </div>
+            )}
+            {chart ?? <div className="cpc__error-inline">Could not render that chart.</div>}
+        </div>
+    );
+}
+
+function ColumnOverviewCard({ columns, visual, showVisual = true, error, spec }) {
+    if (error) {
+        return (
+            <div className="cpc__card cpc__card--overview">
+                <div className="cpc__card-label">Column Overview</div>
+                <div className="cpc__error-inline">{error}</div>
+            </div>
+        );
+    }
+
+    const singleSpecCol = columns?.length === 1 && spec
+        ? spec.columns.find((c) => c.name === columns[0]?.name)
+        : null;
+
+    return (
+        <div className="cpc__card cpc__card--overview">
+            <div className="cpc__card-label">Column Overview</div>
+            <table className="cpc__table">
+                <thead>
+                    <tr><th>Column</th><th>Type</th><th>Missing</th><th>Details</th></tr>
+                </thead>
+                <tbody>
+                    {(columns ?? []).map((col) => (
+                        <tr key={col.name}>
+                            <td>{col.name}</td>
+                            <td>{col.error ? '—' : col.type}</td>
+                            <td>{col.error ? '—' : col.missing}</td>
+                            <td className="cpc__td--detail">
+                                {col.error
+                                    ? <span className="cpc__error-inline">{col.error}</span>
+                                    : col.stats
+                                        ? `μ=${col.stats.mean}  σ=${col.stats.std}  [${col.stats.min}, ${col.stats.max}]`
+                                        : col.topValues?.map((tv) => `${tv.value}(${tv.count})`).slice(0, 5).join(', ')
+                                }
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+
+            {showVisual && !visual && singleSpecCol?.type === 'numeric' && singleSpecCol.histogram?.length > 0 && (
+                <div className="cpc__chart-wrap">
+                    <MiniHistogram col={singleSpecCol} />
+                </div>
+            )}
+            {showVisual && !visual && singleSpecCol && singleSpecCol.type !== 'numeric' && singleSpecCol.top_values?.length > 0 && (
+                <div className="cpc__chart-wrap">
+                    <MiniFrequencyBar col={singleSpecCol} />
+                </div>
+            )}
+
+            {showVisual && visual && (
+                <div className="cpc__overview-visual">
+                    <VisualCard {...visual} spec={spec} />
+                </div>
+            )}
+        </div>
+    );
+}
+
 function ToolResultCard({ toolName, result }) {
+    const spec = useDataModeStore((s) => s.datasetSpec);
+
     switch (result.type) {
-        case 'stats':       return <StatsCard {...result} />;
+        case 'column_overview': return <ColumnOverviewCard {...result} spec={spec} />;
+        case 'stats':       return <StatsCard {...result} spec={spec} />;
         case 'values':      return <ValuesCard {...result} />;
-        case 'test':        return <TestCard {...result} />;
+        case 'test':        return <TestCard {...result} spec={spec} />;
         case 'filter':      return <FilterCard {...result} />;
         case 'correlation': return <CorrelationCard {...result} />;
+        case 'visual':      return <VisualCard {...result} spec={spec} />;
         case 'summary':     return <SummaryCard {...result} />;
         default:            return (
             <div className="cpc__card">
@@ -354,7 +551,9 @@ function MessageBubble({ msg }) {
             {msg.role === 'assistant'
                 ? (
                     <div className="cpc__md">
-                        <ReactMarkdown>{msg.content ?? ''}</ReactMarkdown>
+                        <ReactMarkdown unwrapDisallowed disallowedElements={['img']}>
+                            {msg.content ?? ''}
+                        </ReactMarkdown>
                     </div>
                 )
                 : <span className="cpc__msg-text">{msg.content}</span>
@@ -375,6 +574,17 @@ function ChatPanel() {
     const historyRef = useRef([]); // OpenAI-format conversation history (no system msg)
 
     const datasetSpec = useDataModeStore((s) => s.datasetSpec);
+
+    const starterPrompts = datasetSpec
+        ? [
+            `Tell me about the ${datasetSpec.columns[0]?.name ?? 'first'} column`,
+            datasetSpec.columns.find((c) => c.type === 'numeric')
+                ? `Show a visual for ${datasetSpec.columns.find((c) => c.type === 'numeric').name}`
+                : 'Summarize the most important column',
+            'What are the most interesting patterns in this dataset?',
+            'Give me a quick analysis summary',
+        ]
+        : [];
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -405,11 +615,11 @@ function ChatPanel() {
         ]);
     }, []);
 
-    const handleSend = async () => {
-        const text = input.trim();
+    const handleSend = async (overrideText) => {
+        const text = (overrideText ?? input).trim();
         if (!text || loading || !datasetSpec) return;
 
-        setInput('');
+        if (overrideText == null) setInput('');
         setLoading(true);
 
         const userMsg = { role: 'user', content: text };
@@ -438,9 +648,27 @@ function ChatPanel() {
             <div className="dm-chat__messages">
                 {messages.length === 0 && (
                     <div className="dm-chat__empty">
-                        {datasetSpec
-                            ? 'Ask anything about your dataset, insights, or results.'
-                            : 'Upload a dataset to start asking questions.'}
+                        {datasetSpec ? (
+                            <div className="dm-chat__empty-state">
+                                <div className="dm-chat__empty-copy">
+                                    Ask anything about your dataset, insights, or results.
+                                </div>
+                                <div className="dm-chat__starters">
+                                    {starterPrompts.map((prompt) => (
+                                        <button
+                                            key={prompt}
+                                            className="dm-chat__starter"
+                                            onClick={() => setInput(prompt)}
+                                            disabled={loading}
+                                        >
+                                            {prompt}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            'Upload a dataset to start asking questions.'
+                        )}
                     </div>
                 )}
                 {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)}
