@@ -359,6 +359,102 @@ function SummaryCard({ stats }) {
     );
 }
 
+function DatasetOverviewCard({ name, description, rows, columns, numericCount, categoricalCount, topNumeric, topCategorical, error }) {
+    if (error) {
+        return (
+            <div className="cpc__card cpc__card--dataset-overview">
+                <div className="cpc__card-label">Dataset Overview</div>
+                <div className="cpc__error-inline">{error}</div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="cpc__card cpc__card--dataset-overview">
+            <div className="cpc__card-label">Dataset Overview</div>
+            {name && <div className="cpc__dataset-title">{name}</div>}
+            {description && <div className="cpc__dataset-desc">{description}</div>}
+
+            <div className="cpc__dataset-metrics">
+                <div className="cpc__dataset-metric"><span>{rows}</span><label>Rows</label></div>
+                <div className="cpc__dataset-metric"><span>{columns}</span><label>Columns</label></div>
+                <div className="cpc__dataset-metric"><span>{numericCount}</span><label>Numeric</label></div>
+                <div className="cpc__dataset-metric"><span>{categoricalCount}</span><label>Non-numeric</label></div>
+            </div>
+
+            {topNumeric?.length > 0 && (
+                <div className="cpc__dataset-section">
+                    <div className="cpc__dataset-section-title">Notable numeric columns</div>
+                    <div className="cpc__dataset-list">
+                        {topNumeric.map((col) => (
+                            <div key={col.name} className="cpc__dataset-list-item">
+                                <strong>{col.name}</strong>
+                                <span>mean {col.mean} · range {col.min} to {col.max} · sd {col.std}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {topCategorical?.length > 0 && (
+                <div className="cpc__dataset-section">
+                    <div className="cpc__dataset-section-title">Notable categorical columns</div>
+                    <div className="cpc__dataset-list">
+                        {topCategorical.map((col) => (
+                            <div key={col.name} className="cpc__dataset-list-item">
+                                <strong>{col.name}</strong>
+                                <span>
+                                    {col.unique} unique
+                                    {col.topValues?.length > 0
+                                        ? ` · top: ${col.topValues.map((tv) => `${tv.value}(${tv.count})`).join(', ')}`
+                                        : ''}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function InsightsCard({ insights, error }) {
+    if (error) {
+        return (
+            <div className="cpc__card cpc__card--insights">
+                <div className="cpc__card-label">Insights</div>
+                <div className="cpc__error-inline">{error}</div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="cpc__card cpc__card--insights">
+            <div className="cpc__card-label">Insights</div>
+            <div className="cpc__insights-list">
+                {(insights ?? []).map((insight, i) => (
+                    <div key={`${insight.title}-${i}`} className="cpc__insight-item">
+                        <div className="cpc__insight-title">{i + 1}. {insight.title}</div>
+                        {insight.description && (
+                            <div className="cpc__insight-desc">{insight.description}</div>
+                        )}
+                        {insight.columns?.length > 0 && (
+                            <div className="cpc__insight-tags">
+                                {insight.columns.map((col) => (
+                                    <span key={col} className="cpc__insight-tag">{col}</span>
+                                ))}
+                            </div>
+                        )}
+                        {insight.reason && (
+                            <div className="cpc__insight-reason">Why it matters: {insight.reason}</div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function CorrelationHeatmapGraphic({ cols, matrix }) {
     const maxCols = 7;
     const names   = cols.slice(0, maxCols);
@@ -519,7 +615,9 @@ function ToolResultCard({ toolName, result }) {
     const spec = useDataModeStore((s) => s.datasetSpec);
 
     switch (result.type) {
+        case 'dataset_overview': return <DatasetOverviewCard {...result} />;
         case 'column_overview': return <ColumnOverviewCard {...result} spec={spec} />;
+        case 'insights':    return <InsightsCard {...result} />;
         case 'stats':       return <StatsCard {...result} spec={spec} />;
         case 'values':      return <ValuesCard {...result} />;
         case 'test':        return <TestCard {...result} spec={spec} />;
@@ -616,10 +714,12 @@ function ChatPanel() {
     }, []);
 
     const handleSend = async (overrideText) => {
-        const text = (overrideText ?? input).trim();
+        const text = typeof overrideText === 'string'
+            ? overrideText.trim()
+            : input.trim();
         if (!text || loading || !datasetSpec) return;
 
-        if (overrideText == null) setInput('');
+        if (typeof overrideText !== 'string') setInput('');
         setLoading(true);
 
         const userMsg = { role: 'user', content: text };
@@ -689,8 +789,9 @@ function ChatPanel() {
                 />
                 <button
                     className="dm-chat__send"
+                    type="button"
                     aria-label="Send"
-                    onClick={handleSend}
+                    onClick={() => handleSend()}
                     disabled={loading || !input.trim() || !datasetSpec}
                 >
                     {loading
