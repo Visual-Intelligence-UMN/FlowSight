@@ -69,6 +69,8 @@ function HypothesisNode({ id, data, selected }) {
             .length;
 
         const resultId  = `result-${id}-${Date.now()}`;
+        const { allocateResultIdentifier } = useDataModeStore.getState();
+        const identifier = allocateResultIdentifier();
         const columns   = data.variables ?? [];
         const testType  = data.suggested_test ?? '';
         addNode({
@@ -77,6 +79,7 @@ function HypothesisNode({ id, data, selected }) {
             position: { x: pos.x + siblings * 380, y: pos.y + 280 },
             data:     {
                 ...result,
+                identifier,
                 columns,
                 testType,
                 chart_type: data.chart_type ?? '',

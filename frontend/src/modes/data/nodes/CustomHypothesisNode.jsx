@@ -114,12 +114,15 @@ function CustomHypothesisNode({ id, data, selected }) {
             .length;
 
         const resultId = `result-${id}-${Date.now()}`;
+        const { allocateResultIdentifier } = useDataModeStore.getState();
+        const identifier = allocateResultIdentifier();
         addNode({
             id:   resultId,
             type: 'result',
             position: { x: pos.x + siblings * 380, y: pos.y + 340 },
             data: {
                 ...result,
+                identifier,
                 columns:    suggestion.variables ?? [],
                 chart_type: suggestion.chart_type ?? '',
             },

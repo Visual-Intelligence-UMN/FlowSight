@@ -11,6 +11,7 @@ function ResultNode({ data, selected }) {
         <div className={`dm-node dm-node--result ${selected ? 'dm-node--selected' : ''}`}>
             <div className="dm-node__header">
                 Result
+                {data.identifier && <span className="dm-node__header-id">{data.identifier}</span>}
                 {data.aiAssisted && (
                     <span className="res__ai-badge">AI-assisted</span>
                 )}

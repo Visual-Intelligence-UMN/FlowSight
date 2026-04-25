@@ -77,6 +77,16 @@ const useDataModeStore = create((set, get) => ({
     // }
     results: new Map(),
 
+    // ── Node identifiers ──────────────────────────────────────
+    insightTypeCounts: {
+        relationship: 0,
+        group_difference: 0,
+        distribution_issue: 0,
+        outlier_candidate: 0,
+    },
+    hypothesisCount: 0,
+    resultCount: 0,
+
 
     // ── Graph actions ─────────────────────────────────────────
 
@@ -167,7 +177,47 @@ const useDataModeStore = create((set, get) => ({
         insights:    new Map(),
         hypotheses:  new Map(),
         results:     new Map(),
+        insightTypeCounts: {
+            relationship: 0,
+            group_difference: 0,
+            distribution_issue: 0,
+            outlier_candidate: 0,
+        },
+        hypothesisCount: 0,
+        resultCount: 0,
     }),
+
+    allocateInsightIdentifier: (insightType) => {
+        const prefixMap = {
+            relationship: 'R',
+            group_difference: 'GD',
+            distribution_issue: 'DI',
+            outlier_candidate: 'OC',
+        };
+        const type = insightType ?? '';
+        const prefix = prefixMap[type] ?? 'I';
+        const current = get().insightTypeCounts[type] ?? 0;
+        const next = current + 1;
+        set((state) => ({
+            insightTypeCounts: {
+                ...state.insightTypeCounts,
+                [type]: next,
+            },
+        }));
+        return `${prefix}${next}`;
+    },
+
+    allocateHypothesisIdentifier: () => {
+        const next = get().hypothesisCount + 1;
+        set({ hypothesisCount: next });
+        return `H${next}`;
+    },
+
+    allocateResultIdentifier: () => {
+        const next = get().resultCount + 1;
+        set({ resultCount: next });
+        return `RES${next}`;
+    },
 
     // ── Analysis record actions ───────────────────────────────
 

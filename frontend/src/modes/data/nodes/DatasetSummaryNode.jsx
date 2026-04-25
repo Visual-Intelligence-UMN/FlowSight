@@ -110,14 +110,14 @@ function ExpandedSummary({ id, spec, selected }) {
             const pos      = thisNode?.position ?? { x: 780, y: 200 };
             const spacing  = 320;
             const startX   = pos.x - ((insights.length - 1) * spacing) / 2;
-
-            const { addInsightRecord } = useDataModeStore.getState();
+            const { addInsightRecord, allocateInsightIdentifier } = useDataModeStore.getState();
             insights.forEach((insight, i) => {
+                const identifier = allocateInsightIdentifier(insight.type ?? '');
                 addNode({
                     id:       insight.id,
                     type:     'insight',
                     position: { x: startX + i * spacing, y: pos.y + 300 },
-                    data:     insight,
+                    data:     { ...insight, identifier },
                 });
                 addEdge({
                     id:           `e-${id}-${insight.id}`,

@@ -71,8 +71,8 @@ function InsightNode({ id, data, selected }) {
         setHypStatus('loading');
 
         try {
-            const hypCount = nodes.filter((n) => n.type === 'hypothesis').length;
-            const label    = `H${hypCount + 1}`;
+            const { allocateHypothesisIdentifier } = useDataModeStore.getState();
+            const label = allocateHypothesisIdentifier();
 
             const { datasetDescription } = useDataModeStore.getState();
             const hypothesis = await fetchHypothesis(data, datasetMetadata, datasetSpec, label, datasetDescription);
@@ -126,9 +126,10 @@ function InsightNode({ id, data, selected }) {
     // ── Render ────────────────────────────────────────────────────────────
 
     return (
-        <div className={`dm-node dm-node--insight ${meta.cls ?? ''} ${selected ? 'dm-node--selected' : ''}`}>
+            <div className={`dm-node dm-node--insight ${meta.cls ?? ''} ${selected ? 'dm-node--selected' : ''}`}>
             <div className="dm-node__header">
                 {meta.label}
+                {data.identifier && <span className="dm-node__header-id">{data.identifier}</span>}
             </div>
 
             <div className="dm-node__body">
