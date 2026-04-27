@@ -59,6 +59,146 @@ export function getGroupBarData(catCol, numCol, maxGroups = 7) {
         .slice(0, maxGroups);
 }
 
+/** Raw point data for grouped numeric comparisons, with deterministic jitter */
+export function getGroupPointData(catCol, numCol, maxPointsPerGroup = 40, limitGroups = 2) {
+    const groups = new Map();
+    const orderedGroups = [];
+    const n = Math.min(catCol.raw_values.length, numCol.raw_values.length);
+
+    for (let i = 0; i < n; i++) {
+        const group = String(catCol.raw_values[i] ?? '').trim();
+        const value = parseFloat(numCol.raw_values[i]);
+        if (!group || isNaN(value)) continue;
+
+        if (!groups.has(group)) {
+            groups.set(group, []);
+            orderedGroups.push(group);
+        }
+        groups.get(group).push(value);
+    }
+
+    const selectedGroups = orderedGroups.slice(0, limitGroups);
+    return selectedGroups.flatMap((groupName, groupIndex) => {
+        const vals = groups.get(groupName) ?? [];
+        const step = vals.length > maxPointsPerGroup ? vals.length / maxPointsPerGroup : 1;
+        const sampled = vals.length > maxPointsPerGroup
+            ? Array.from({ length: maxPointsPerGroup }, (_, i) => vals[Math.floor(i * step)])
+            : vals;
+
+        return sampled.map((value, pointIndex) => {
+            const jitterSeed = ((pointIndex % 9) - 4) / 28;
+            return {
+                group: groupName,
+                groupIndex,
+                value: +value.toFixed(4),
+                jitterX: +(groupIndex + jitterSeed).toFixed(4),
+            };
+        });
+    });
+}
+
+/** Summary stats for the first N groups used in the numeric group comparison result view */
+export function getGroupComparisonSummary(catCol, numCol, limitGroups = 2) {
+    const groups = new Map();
+    const orderedGroups = [];
+    const n = Math.min(catCol.raw_values.length, numCol.raw_values.length);
+
+    for (let i = 0; i < n; i++) {
+        const group = String(catCol.raw_values[i] ?? '').trim();
+        const value = parseFloat(numCol.raw_values[i]);
+        if (!group || isNaN(value)) continue;
+
+        if (!groups.has(group)) {
+            groups.set(group, []);
+            orderedGroups.push(group);
+        }
+        groups.get(group).push(value);
+    }
+
+    return orderedGroups.slice(0, limitGroups).map((group) => {
+        const vals = groups.get(group) ?? [];
+        const mean = vals.reduce((sum, v) => sum + v, 0) / vals.length;
+        const variance = vals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / vals.length;
+        return {
+            name: group,
+            mean: +mean.toFixed(3),
+            std: +Math.sqrt(variance).toFixed(3),
+            count: vals.length,
+        };
+    });
+}
+
+function quantile(sortedVals, q) {
+    if (!sortedVals.length) return null;
+    if (sortedVals.length === 1) return sortedVals[0];
+    const pos = (sortedVals.length - 1) * q;
+    const lower = Math.floor(pos);
+    const upper = Math.ceil(pos);
+    if (lower === upper) return sortedVals[lower];
+    const weight = pos - lower;
+    return sortedVals[lower] * (1 - weight) + sortedVals[upper] * weight;
+}
+
+/** Richer summary for 2-group comparison visuals: quartiles, CI, and overlap cues */
+export function getGroupDistributionSummary(catCol, numCol, limitGroups = 2) {
+    const groups = new Map();
+    const orderedGroups = [];
+    const n = Math.min(catCol.raw_values.length, numCol.raw_values.length);
+
+    for (let i = 0; i < n; i++) {
+        const group = String(catCol.raw_values[i] ?? '').trim();
+        const value = parseFloat(numCol.raw_values[i]);
+        if (!group || isNaN(value)) continue;
+        if (!groups.has(group)) {
+            groups.set(group, []);
+            orderedGroups.push(group);
+        }
+        groups.get(group).push(value);
+    }
+
+    return orderedGroups.slice(0, limitGroups).map((group) => {
+        const vals = [...(groups.get(group) ?? [])].sort((a, b) => a - b);
+        if (!vals.length) return null;
+        const mean = vals.reduce((sum, v) => sum + v, 0) / vals.length;
+        const variance = vals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / vals.length;
+        const std = Math.sqrt(variance);
+        const se = vals.length > 0 ? std / Math.sqrt(vals.length) : 0;
+        const ciHalf = 1.96 * se;
+
+        return {
+            name: group,
+            count: vals.length,
+            mean: +mean.toFixed(3),
+            std: +std.toFixed(3),
+            min: +vals[0].toFixed(3),
+            q1: +quantile(vals, 0.25).toFixed(3),
+            median: +quantile(vals, 0.5).toFixed(3),
+            q3: +quantile(vals, 0.75).toFixed(3),
+            max: +vals[vals.length - 1].toFixed(3),
+            ciLow: +(mean - ciHalf).toFixed(3),
+            ciHigh: +(mean + ciHalf).toFixed(3),
+        };
+    }).filter(Boolean);
+}
+
+export function getIqrOverlapSummary(groupSummary) {
+    if (!groupSummary || groupSummary.length < 2) return null;
+    const [a, b] = groupSummary;
+    const overlap = Math.max(0, Math.min(a.q3, b.q3) - Math.max(a.q1, b.q1));
+    const minIqr = Math.max(0.0001, Math.min(a.q3 - a.q1, b.q3 - b.q1));
+    const ratio = overlap / minIqr;
+
+    let label = 'little overlap';
+    if (ratio >= 0.8) label = 'substantial overlap';
+    else if (ratio >= 0.35) label = 'moderate overlap';
+
+    return {
+        ratio: +ratio.toFixed(3),
+        label,
+        overlap: +overlap.toFixed(3),
+    };
+}
+
 /** Returns true if a column is likely an identifier with no analytical meaning */
 function isIdLike(col) {
     const name = col.name.toLowerCase();
@@ -125,4 +265,53 @@ export function getRegressionLine(scatterData) {
         const x = xMin + (i / 29) * (xMax - xMin);
         return { x: +x.toFixed(4), y: +(m * x + b).toFixed(4) };
     });
+}
+
+/** Contingency-table evidence for chi-square style result charts */
+export function getContingencyEvidence(col1, col2, maxRows = 5, maxCols = 5) {
+    const raw1 = (col1?.raw_values ?? []).map((v) => String(v ?? '').trim());
+    const raw2 = (col2?.raw_values ?? []).map((v) => String(v ?? '').trim());
+    const n = Math.min(raw1.length, raw2.length);
+    if (n < 2) return null;
+
+    const counts1 = new Map();
+    const counts2 = new Map();
+    for (let i = 0; i < n; i++) {
+        if (raw1[i]) counts1.set(raw1[i], (counts1.get(raw1[i]) ?? 0) + 1);
+        if (raw2[i]) counts2.set(raw2[i], (counts2.get(raw2[i]) ?? 0) + 1);
+    }
+
+    const cats1 = [...counts1.entries()].sort((a, b) => b[1] - a[1]).slice(0, maxRows).map(([name]) => name);
+    const cats2 = [...counts2.entries()].sort((a, b) => b[1] - a[1]).slice(0, maxCols).map(([name]) => name);
+    if (!cats1.length || !cats2.length) return null;
+
+    const table = cats1.map(() => cats2.map(() => 0));
+    for (let i = 0; i < n; i++) {
+        const r = cats1.indexOf(raw1[i]);
+        const c = cats2.indexOf(raw2[i]);
+        if (r >= 0 && c >= 0) table[r][c]++;
+    }
+
+    const rowTotals = table.map((row) => row.reduce((sum, value) => sum + value, 0));
+    const colTotals = cats2.map((_, c) => table.reduce((sum, row) => sum + row[c], 0));
+    const total = rowTotals.reduce((sum, value) => sum + value, 0);
+    if (!total) return null;
+
+    const cells = [];
+    for (let r = 0; r < cats1.length; r++) {
+        for (let c = 0; c < cats2.length; c++) {
+            const observed = table[r][c];
+            const expected = (rowTotals[r] * colTotals[c]) / total;
+            const residual = expected > 0 ? (observed - expected) / Math.sqrt(expected) : 0;
+            cells.push({
+                row: cats1[r],
+                col: cats2[c],
+                observed,
+                expected: +expected.toFixed(3),
+                residual: +residual.toFixed(3),
+            });
+        }
+    }
+
+    return { rows: cats1, cols: cats2, cells };
 }

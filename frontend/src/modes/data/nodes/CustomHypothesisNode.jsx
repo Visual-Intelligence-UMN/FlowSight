@@ -3,6 +3,7 @@ import { Handle, Position } from '@xyflow/react';
 import useDataModeStore from '../store/useDataModeStore';
 import { refineHypothesis, fetchTestSuggestions } from '../api/customHypothesisService';
 import { runTest, fetchTestResult } from '../api/statisticsService';
+import { buildFallbackResultEvidence } from '../utils/evidenceModel';
 import './nodes.css';
 
 const RESULT_EDGE = {
@@ -116,6 +117,15 @@ function CustomHypothesisNode({ id, data, selected }) {
         const resultId = `result-${id}-${Date.now()}`;
         const { allocateResultIdentifier } = useDataModeStore.getState();
         const identifier = allocateResultIdentifier();
+        const evidence = result.evidence ?? buildFallbackResultEvidence({
+            hypothesisType: suggestion.type ?? '',
+            chartType: suggestion.chart_type ?? '',
+            variables: suggestion.variables ?? [],
+            stat: result.stat ?? null,
+            pValue: result.pValue ?? null,
+            significant: result.significant ?? false,
+            method: result.method ?? suggestion.test_name ?? '',
+        });
         addNode({
             id:   resultId,
             type: 'result',
@@ -125,6 +135,7 @@ function CustomHypothesisNode({ id, data, selected }) {
                 identifier,
                 columns:    suggestion.variables ?? [],
                 chart_type: suggestion.chart_type ?? '',
+                evidence,
             },
         });
         addEdge({
@@ -141,6 +152,7 @@ function CustomHypothesisNode({ id, data, selected }) {
             significant:            result.significant ?? false,
             summary:                result.summary ?? '',
             aiAssisted:             result.aiAssisted ?? false,
+            evidence,
         });
         setDone(true);
     }

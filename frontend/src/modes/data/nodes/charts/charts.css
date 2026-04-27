@@ -55,6 +55,287 @@
     color: #f59e0b;
 }
 
+.rchart__evidence-strip {
+    display: grid;
+    grid-template-columns: minmax(0, 70px) minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.045);
+    border: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+.rchart__metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.rchart__metric-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+}
+
+.rchart__metric-value {
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.rchart__metric-value--sig {
+    color: #059669;
+}
+
+.rchart__metric-value--ns {
+    color: #e11d48;
+}
+
+.rchart__evidence-copy {
+    display: grid;
+    gap: 2px;
+    margin: -2px 0 8px;
+}
+
+.rchart__evidence-detail {
+    font-size: 10px;
+    font-weight: 700;
+    color: #475569;
+}
+
+.rchart__evidence-note {
+    font-size: 10px;
+    line-height: 1.45;
+    color: #94a3b8;
+}
+
+.rchart__meter {
+    position: relative;
+    display: grid;
+    gap: 6px;
+}
+
+.rchart__meter-track {
+    position: relative;
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(
+        90deg,
+        rgba(16, 185, 129, 0.2) 0%,
+        rgba(16, 185, 129, 0.2) 50%,
+        rgba(244, 63, 94, 0.14) 50%,
+        rgba(244, 63, 94, 0.14) 100%
+    );
+}
+
+.rchart__meter-alpha,
+.rchart__meter-marker {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+}
+
+.rchart__meter-alpha {
+    width: 0;
+}
+
+.rchart__meter-alpha-line {
+    display: block;
+    width: 1.5px;
+    height: 16px;
+    background: rgba(51, 65, 85, 0.4);
+}
+
+.rchart__meter-alpha-label {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 8px;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.rchart__meter-dot {
+    display: block;
+    width: 12px;
+    height: 12px;
+    margin-top: -2px;
+    border-radius: 999px;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.16);
+}
+
+.rchart__meter-dot--sig {
+    background: #10b981;
+}
+
+.rchart__meter-dot--ns {
+    background: #f43f5e;
+}
+
+.rchart__meter-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8px;
+    color: #94a3b8;
+    margin-top: 10px;
+}
+
+.rchart__panel {
+    display: grid;
+    gap: 6px;
+}
+
+.rchart__panel-copy {
+    display: grid;
+    gap: 2px;
+}
+
+.rchart__panel-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+}
+
+.rchart__panel-subtitle {
+    font-size: 10px;
+    line-height: 1.45;
+    color: #94a3b8;
+}
+
+.rchart__chart-note {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+}
+
+.rchart__effect-pill {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+}
+
+.rchart__effect-pill--sig {
+    background: rgba(16, 185, 129, 0.12);
+    color: #059669;
+}
+
+.rchart__effect-pill--ns {
+    background: rgba(244, 63, 94, 0.1);
+    color: #e11d48;
+}
+
+.rchart__heatmap-wrap {
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.rchart__groupviz-wrap {
+    width: 100%;
+    overflow: hidden;
+    padding-bottom: 2px;
+}
+
+.rchart__groupviz {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.rchart__heatmap-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.rchart__gridline {
+    stroke: rgba(148, 163, 184, 0.22);
+    stroke-width: 1;
+}
+
+.rchart__axis-text {
+    font-size: 8px;
+    fill: #94a3b8;
+}
+
+.rchart__annotation-text {
+    font-size: 8px;
+    fill: #10b981;
+    font-weight: 700;
+}
+
+.rchart__point {
+    fill: rgba(203, 213, 225, 0.85);
+}
+
+.rchart__whisker {
+    stroke: rgba(148, 163, 184, 0.55);
+    stroke-width: 1.25;
+}
+
+.rchart__iqr-box {
+    fill: rgba(99, 102, 241, 0.14);
+    stroke: rgba(99, 102, 241, 0.28);
+    stroke-width: 1;
+}
+
+.rchart__median-line {
+    stroke: rgba(99, 102, 241, 0.75);
+    stroke-width: 1.4;
+}
+
+.rchart__ci-line {
+    stroke: #10b981;
+    stroke-width: 1.5;
+}
+
+.rchart__overlap-note {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.1);
+    color: #6366f1;
+}
+
+@media (max-width: 320px) {
+    .rchart__evidence-strip {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .rchart__meter {
+        margin-top: 2px;
+    }
+
+    .rchart__meter-alpha-label {
+        font-size: 7px;
+    }
+
+    .rchart__chart-note {
+        gap: 4px;
+    }
+
+    .rchart__effect-pill,
+    .rchart__overlap-note {
+        margin-left: 0;
+    }
+}
+
 /* Dark mode */
 [data-theme="dark"] .ichart {
     border-top-color: rgba(255, 255, 255, 0.07);
@@ -62,4 +343,33 @@
 
 [data-theme="dark"] .ichart__axis-labels {
     color: #64748b;
+}
+
+[data-theme="dark"] .rchart__evidence-strip {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.18);
+}
+
+[data-theme="dark"] .rchart__panel-title {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .rchart__evidence-detail {
+    color: #cbd5e1;
+}
+
+[data-theme="dark"] .rchart__panel-subtitle,
+[data-theme="dark"] .rchart__evidence-note,
+[data-theme="dark"] .rchart__chart-note,
+[data-theme="dark"] .rchart__meter-alpha-label {
+    color: #64748b;
+}
+
+[data-theme="dark"] .rchart__gridline {
+    stroke: rgba(148, 163, 184, 0.18);
+}
+
+[data-theme="dark"] .rchart__iqr-box {
+    fill: rgba(99, 102, 241, 0.16);
+    stroke: rgba(129, 140, 248, 0.3);
 }

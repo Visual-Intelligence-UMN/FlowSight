@@ -55,6 +55,11 @@ function ResultNode({ data, selected }) {
                     spec={datasetSpec}
                     significant={data.significant}
                     aiAssisted={data.aiAssisted}
+                    pValue={data.pValue}
+                    stat={data.stat}
+                    method={data.method}
+                    testType={data.testType}
+                    evidence={data.evidence}
                 />
 
             </div>

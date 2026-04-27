@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import useDataModeStore from '../store/useDataModeStore';
 import { runTest, fetchTestResult } from '../api/statisticsService';
+import { buildFallbackResultEvidence } from '../utils/evidenceModel';
 import './nodes.css';
 
 const TYPE_LABEL = {
@@ -72,7 +73,16 @@ function HypothesisNode({ id, data, selected }) {
         const { allocateResultIdentifier } = useDataModeStore.getState();
         const identifier = allocateResultIdentifier();
         const columns   = data.variables ?? [];
-        const testType  = data.suggested_test ?? '';
+        const testType  = result.testType ?? data.type ?? '';
+        const evidence  = result.evidence ?? buildFallbackResultEvidence({
+            hypothesisType: data.type ?? '',
+            chartType: data.chart_type ?? '',
+            variables: columns,
+            stat: result.stat ?? null,
+            pValue: result.pValue ?? null,
+            significant: result.significant ?? false,
+            method: result.method ?? data.suggested_test ?? '',
+        });
         addNode({
             id:       resultId,
             type:     'result',
@@ -83,6 +93,7 @@ function HypothesisNode({ id, data, selected }) {
                 columns,
                 testType,
                 chart_type: data.chart_type ?? '',
+                evidence,
             },
         });
         addEdge({
@@ -102,6 +113,7 @@ function HypothesisNode({ id, data, selected }) {
             significant:             result.significant ?? false,
             summary:                 result.summary ?? '',
             aiAssisted:              result.aiAssisted ?? false,
+            evidence,
         });
     }
 

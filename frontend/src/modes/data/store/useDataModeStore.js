@@ -19,6 +19,7 @@ const useDataModeStore = create((set, get) => ({
 
     // ── Selection ────────────────────────────────────────────
     selectedNode: null,
+    highlightedNodeIds: [],
 
     // ── Dataset (raw, used by stats engine + chart renderers) ─
     datasetMetadata: null,
@@ -73,7 +74,7 @@ const useDataModeStore = create((set, get) => ({
     //   nodeId, parentHypothesisNodeId,
     //   method, testType, columns,
     //   stat, pValue, significant, summary,
-    //   aiAssisted, createdAt
+    //   aiAssisted, evidence, createdAt
     // }
     results: new Map(),
 
@@ -103,6 +104,8 @@ const useDataModeStore = create((set, get) => ({
     addEdge: (edge) => set((state) => ({ edges: [...state.edges, edge] })),
 
     setSelectedNode: (node) => set({ selectedNode: node }),
+
+    setHighlightedNodeIds: (ids) => set({ highlightedNodeIds: ids ?? [] }),
 
     updateNodeData: (nodeId, patch) => set((state) => ({
         nodes: state.nodes.map((n) =>
@@ -172,6 +175,7 @@ const useDataModeStore = create((set, get) => ({
     resetGraph: () => set({
         nodes:       [],
         edges:       [],
+        highlightedNodeIds: [],
         datasetDescription: '',
         dataset:     null,
         insights:    new Map(),

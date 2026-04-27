@@ -6,11 +6,14 @@
  * suitable for injection into AI prompts.
  */
 
-export function buildAnalysisContext(state) {
+export function buildAnalysisContext(state, options = {}) {
     const { dataset, insights, hypotheses, results } = state;
+    const scopeIds = options.nodeIds?.length ? new Set(options.nodeIds) : null;
 
     // ── Insights ──────────────────────────────────────────────────────────
-    const insightList = [...insights.values()].map((r) => ({
+    const insightList = [...insights.values()]
+        .filter((r) => !scopeIds || scopeIds.has(r.nodeId))
+        .map((r) => ({
         nodeId:            r.nodeId,
         insightId:         r.insightId,
         title:             r.title,
@@ -22,7 +25,9 @@ export function buildAnalysisContext(state) {
     }));
 
     // ── Hypotheses ────────────────────────────────────────────────────────
-    const hypothesisList = [...hypotheses.values()].map((r) => {
+    const hypothesisList = [...hypotheses.values()]
+        .filter((r) => !scopeIds || scopeIds.has(r.nodeId))
+        .map((r) => {
         const parentInsight = r.parentInsightNodeId
             ? insights.get(r.parentInsightNodeId)
             : null;
@@ -43,7 +48,9 @@ export function buildAnalysisContext(state) {
     });
 
     // ── Results ───────────────────────────────────────────────────────────
-    const resultList = [...results.values()].map((r) => {
+    const resultList = [...results.values()]
+        .filter((r) => !scopeIds || scopeIds.has(r.nodeId))
+        .map((r) => {
         const parentHypothesis = r.parentHypothesisNodeId
             ? hypotheses.get(r.parentHypothesisNodeId)
             : null;
@@ -57,6 +64,7 @@ export function buildAnalysisContext(state) {
             significant:         r.significant ?? false,
             summary:             r.summary ?? '',
             aiAssisted:          r.aiAssisted ?? false,
+            evidence:            r.evidence ?? null,
             hypothesisStatement: parentHypothesis?.statement ?? null,
         };
     });
@@ -78,5 +86,6 @@ export function buildAnalysisContext(state) {
         hypotheses:  hypothesisList,
         results:     resultList,
         stats,
+        scopeNodeIds: scopeIds ? [...scopeIds] : null,
     };
 }

@@ -23,6 +23,7 @@
 import { jStat } from 'jstat';
 import { getApiKey, OPENAI_API_URL } from '../../../constants/api';
 import { OPENAI_MODEL } from '../../../constants/models';
+import { EVIDENCE_KINDS, buildFallbackResultEvidence, makeEvidence } from '../utils/evidenceModel';
 
 const ALPHA = 0.05;
 
@@ -47,7 +48,7 @@ function fmt(n, decimals = 4) {
 
 // ── Pearson Correlation ───────────────────────────────────────────────────────
 
-function pearsonCorrelation(x, y) {
+function pearsonCorrelation(x, y, meta = {}) {
     const n = Math.min(x.length, y.length);
     if (n < 3) throw new Error('Not enough data points for correlation (need ≥ 3).');
     const xs = x.slice(0, n);
@@ -73,11 +74,28 @@ function pearsonCorrelation(x, y) {
     return {
         supported: true,
         method: 'Pearson correlation',
+        testType: 'association',
         stat: fmt(r),
         pValue: fmt(pValue),
         significant,
         summary: `Pearson r = ${fmt(r, 3)}, p = ${fmt(pValue, 4)}. The association is ${significant ? '' : 'not '}statistically significant (α = 0.05). The correlation is ${dir}.`,
         aiAssisted: false,
+        evidence: makeEvidence({
+            kind: EVIDENCE_KINDS.TREND,
+            renderHint: 'scatter',
+            effectLabel: 'r',
+            effectValue: fmt(r, 3),
+            variables: [meta.xName, meta.yName].filter(Boolean),
+            notes: [
+                significant ? 'The fitted trend is statistically reliable.' : 'The fitted trend is weak relative to the spread.',
+            ],
+            details: {
+                sampleSize: n,
+                direction: dir,
+                pValue: fmt(pValue),
+                significant,
+            },
+        }),
     };
 }
 
@@ -119,11 +137,31 @@ function twoSampleTTest(groupCol, valueCol, spec) {
     return {
         supported: true,
         method: "Welch's two-sample t-test",
+        testType: 'group_difference',
         stat: fmt(t),
         pValue: fmt(pValue),
         significant,
         summary: `t(${fmt(df, 1)}) = ${fmt(t, 3)}, p = ${fmt(pValue, 4)}. Mean "${valueCol}": ${fmt(m1, 2)} ("${g1}") vs ${fmt(m2, 2)} ("${g2}"). Difference is ${significant ? '' : 'not '}statistically significant.`,
         aiAssisted: false,
+        evidence: makeEvidence({
+            kind: EVIDENCE_KINDS.GROUP_COMPARISON,
+            renderHint: 'group_distribution',
+            effectLabel: 'mean diff',
+            effectValue: fmt(m1 - m2, 2),
+            variables: [groupCol, valueCol],
+            notes: [
+                'Interpret the mean shift together with how much the groups overlap.',
+            ],
+            details: {
+                groups: [
+                    { name: g1, mean: fmt(m1, 2), std: fmt(s1, 2), count: n1 },
+                    { name: g2, mean: fmt(m2, 2), std: fmt(s2, 2), count: n2 },
+                ],
+                degreesOfFreedom: fmt(df, 1),
+                pValue: fmt(pValue),
+                significant,
+            },
+        }),
     };
 }
 
@@ -167,11 +205,27 @@ function chiSquareTest(col1Name, col2Name, spec) {
     return {
         supported: true,
         method: 'Chi-square test of independence',
+        testType: 'categorical_relationship',
         stat: fmt(chi2),
         pValue: fmt(pValue),
         significant,
         summary: `χ²(${df}) = ${fmt(chi2, 3)}, p = ${fmt(pValue, 4)}. The relationship between "${col1Name}" and "${col2Name}" is ${significant ? '' : 'not '}statistically significant.`,
         aiAssisted: false,
+        evidence: makeEvidence({
+            kind: EVIDENCE_KINDS.CONTINGENCY_DEVIATION,
+            renderHint: 'contingency_heatmap',
+            effectLabel: 'χ²',
+            effectValue: fmt(chi2, 3),
+            variables: [col1Name, col2Name],
+            notes: [
+                'The strongest cells are the ones farthest from their expected counts.',
+            ],
+            details: {
+                degreesOfFreedom: df,
+                pValue: fmt(pValue),
+                significant,
+            },
+        }),
     };
 }
 
@@ -215,7 +269,7 @@ export function runTest(hypothesis, spec) {
                 return { supported: false, testName: 'Pearson correlation (need 2 numeric columns)' };
             const x = toNums(colRaw(spec, numericVars[0]));
             const y = toNums(colRaw(spec, numericVars[1]));
-            return pearsonCorrelation(x, y);
+            return pearsonCorrelation(x, y, { xName: numericVars[0], yName: numericVars[1] });
         }
 
         if (type === 'group_difference' || type === 'distribution_difference' || /t.?test/i.test(testName)) {
@@ -226,7 +280,7 @@ export function runTest(hypothesis, spec) {
                 const x = toNums(colRaw(spec, numericVars[0]));
                 const y = toNums(colRaw(spec, numericVars[1]));
                 // treat as two independent samples
-                return pearsonCorrelation(x, y); // fallback to correlation if same length
+                return pearsonCorrelation(x, y, { xName: numericVars[0], yName: numericVars[1] }); // fallback to correlation if same length
             }
             return { supported: false, testName };
         }
@@ -325,9 +379,18 @@ ${colLines || '  (no column stats available)'}`;
         supported:   true,
         aiAssisted:  true,
         method:      parsed.method      ?? hypothesis.suggested_test,
+        testType:    hypothesis.type ?? '',
         stat:        parsed.stat        ?? null,
         pValue:      parsed.pValue      ?? null,
         significant: parsed.significant ?? false,
         summary:     parsed.summary     ?? 'AI could not estimate a clear result.',
+        evidence:    buildFallbackResultEvidence({
+            hypothesisType: hypothesis.type ?? '',
+            variables: hypothesis.variables ?? [],
+            stat: parsed.stat ?? null,
+            pValue: parsed.pValue ?? null,
+            significant: parsed.significant ?? false,
+            method: parsed.method ?? hypothesis.suggested_test,
+        }),
     };
 }

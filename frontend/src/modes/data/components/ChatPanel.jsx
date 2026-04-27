@@ -7,11 +7,20 @@ import {
 import useDataModeStore from '../store/useDataModeStore';
 import { streamChat } from '../api/chatTools';
 import { getScatterData, getGroupBarData } from '../nodes/charts/chartData';
+import {
+    extractCommittedExactMentions,
+    extractMentionQueries,
+    getActiveMentionQuery,
+    matchNodesByMentionQuery,
+    resolveExactMention,
+    stripMentionsFromText,
+} from '../utils/nodeMentions';
 import './ChatPanel.css';
 
 const TICK  = { fontSize: 8, fill: '#94a3b8' };
 const MARGIN = { top: 4, right: 4, bottom: 2, left: -20 };
 const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#14b8a6', '#a855f7', '#64748b'];
+const INTERNAL_TOOL_NAMES = new Set(['get_scoped_analysis_context']);
 
 // ── Error boundary (prevents tool card crashes from killing the page) ─────────
 
@@ -615,6 +624,7 @@ function ToolResultCard({ toolName, result }) {
     const spec = useDataModeStore((s) => s.datasetSpec);
 
     switch (result.type) {
+        case 'scoped_analysis': return null;
         case 'dataset_overview': return <DatasetOverviewCard {...result} />;
         case 'column_overview': return <ColumnOverviewCard {...result} spec={spec} />;
         case 'insights':    return <InsightsCard {...result} />;
@@ -661,6 +671,52 @@ function MessageBubble({ msg }) {
     );
 }
 
+function buildMentionDecorations(text, nodes) {
+    const value = String(text ?? '');
+    const matches = [...value.matchAll(/(^|\s)(@[A-Za-z0-9_-]+)(?=\s)/g)];
+    if (matches.length === 0) {
+        return [{ type: 'text', content: value }];
+    }
+
+    const segments = [];
+    let cursor = 0;
+
+    for (const match of matches) {
+        const full = match[0];
+        const leading = match[1] ?? '';
+        const mentionText = match[2] ?? '';
+        const start = match.index + leading.length;
+        const end = start + mentionText.length;
+
+        if (start > cursor) {
+            segments.push({ type: 'text', content: value.slice(cursor, start) });
+        }
+
+        const query = mentionText.slice(1);
+        const exactMatch = resolveExactMention(nodes, query);
+
+        if (exactMatch) {
+            segments.push({
+                type: 'mention',
+                raw: mentionText,
+                content: `@${exactMatch.display}`,
+                state: 'resolved',
+                count: 1,
+            });
+        } else {
+            segments.push({ type: 'text', content: mentionText });
+        }
+
+        cursor = end;
+    }
+
+    if (cursor < value.length) {
+        segments.push({ type: 'text', content: value.slice(cursor) });
+    }
+
+    return segments;
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 function ChatPanel() {
@@ -669,9 +725,24 @@ function ChatPanel() {
     const [loading, setLoading]   = useState(false);
 
     const bottomRef  = useRef(null);
+    const inputRef = useRef(null);
+    const inputBackdropRef = useRef(null);
     const historyRef = useRef([]); // OpenAI-format conversation history (no system msg)
 
     const datasetSpec = useDataModeStore((s) => s.datasetSpec);
+    const nodes = useDataModeStore((s) => s.nodes);
+    const setHighlightedNodeIds = useDataModeStore((s) => s.setHighlightedNodeIds);
+
+    const activeMentionQuery = getActiveMentionQuery(input);
+    const activeMentionMatches = activeMentionQuery
+        ? matchNodesByMentionQuery(nodes, activeMentionQuery)
+        : [];
+    const committedMentions = extractCommittedExactMentions(input, nodes);
+    const highlightedMentionIds = [...new Set([
+        ...committedMentions.map(({ entry }) => entry.id),
+        ...activeMentionMatches.map((entry) => entry.id),
+    ])];
+    const mentionDecorations = buildMentionDecorations(input, nodes);
 
     const starterPrompts = datasetSpec
         ? [
@@ -687,6 +758,22 @@ function ChatPanel() {
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    useEffect(() => {
+        if (highlightedMentionIds.length === 0) {
+            setHighlightedNodeIds([]);
+            return;
+        }
+        setHighlightedNodeIds(highlightedMentionIds);
+    }, [highlightedMentionIds, setHighlightedNodeIds]);
+
+    useEffect(() => {
+        const inputEl = inputRef.current;
+        const backdropEl = inputBackdropRef.current;
+        if (!inputEl || !backdropEl) return;
+        backdropEl.scrollTop = inputEl.scrollTop;
+        backdropEl.scrollLeft = inputEl.scrollLeft;
+    }, [input]);
 
     const appendToken = useCallback((token) => {
         setMessages((prev) => {
@@ -707,6 +794,9 @@ function ChatPanel() {
     }, []);
 
     const addToolResult = useCallback((toolName, result) => {
+        if (INTERNAL_TOOL_NAMES.has(toolName) || result?.type === 'scoped_analysis') {
+            return;
+        }
         setMessages((prev) => [
             ...prev,
             { id: `${Date.now()}-tool-${Math.random()}`, role: 'tool_result', toolName, result },
@@ -714,16 +804,26 @@ function ChatPanel() {
     }, []);
 
     const handleSend = async (overrideText) => {
-        const text = typeof overrideText === 'string'
+        const rawText = typeof overrideText === 'string'
             ? overrideText.trim()
             : input.trim();
+        const mentionQueries = extractMentionQueries(rawText);
+        const scopedNodeIds = [...new Set(
+            mentionQueries
+                .map((query) => resolveExactMention(nodes, query))
+                .filter(Boolean)
+                .map((entry) => entry.id)
+        )];
+        const strippedText = stripMentionsFromText(rawText, nodes);
+        const text = strippedText || (scopedNodeIds.length > 0 ? 'Explain the tagged node context.' : '');
         if (!text || loading || !datasetSpec) return;
 
         if (typeof overrideText !== 'string') setInput('');
+        setHighlightedNodeIds([]);
         setLoading(true);
 
         const userMsg = { role: 'user', content: text };
-        setMessages((prev) => [...prev, { ...userMsg, id: `${Date.now()}-user` }]);
+        setMessages((prev) => [...prev, { role: 'user', content: rawText, id: `${Date.now()}-user` }]);
         historyRef.current = [...historyRef.current, userMsg];
 
         const finalMessages = await streamChat(historyRef.current, datasetSpec, {
@@ -738,7 +838,7 @@ function ChatPanel() {
                 }]);
                 setLoading(false);
             },
-        });
+        }, { scopeNodeIds: scopedNodeIds });
 
         historyRef.current = finalMessages;
     };
@@ -776,17 +876,57 @@ function ChatPanel() {
             </div>
 
             <div className="dm-chat__input-row">
-                <textarea
-                    className="dm-chat__input nodrag"
-                    rows={2}
-                    placeholder={datasetSpec ? 'Ask a question… (Enter to send)' : 'Upload a dataset first'}
-                    value={input}
-                    disabled={loading || !datasetSpec}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-                    }}
-                />
+                <div className="dm-chat__input-shell">
+                    <div
+                        ref={inputBackdropRef}
+                        className="dm-chat__input-backdrop"
+                        aria-hidden="true"
+                    >
+                        {input.length === 0 ? (
+                            <span className="dm-chat__input-placeholder">
+                                {datasetSpec ? 'Ask a question… (Enter to send)' : 'Upload a dataset first'}
+                            </span>
+                        ) : (
+                            mentionDecorations.map((segment, index) => {
+                                if (segment.type === 'text') {
+                                    return <span key={`text-${index}`}>{segment.content}</span>;
+                                }
+                                return (
+                                    <span
+                                        key={`mention-${index}`}
+                                        className={`dm-chat__inline-mention dm-chat__inline-mention--${segment.state}`}
+                                        title={
+                                            segment.state === 'partial'
+                                                ? `${segment.count} matching nodes`
+                                                : segment.state === 'empty'
+                                                    ? 'No matching node'
+                                                    : 'Tagged node'
+                                        }
+                                    >
+                                        {segment.content}
+                                    </span>
+                                );
+                            })
+                        )}
+                    </div>
+                    <textarea
+                        ref={inputRef}
+                        className="dm-chat__input nodrag"
+                        rows={2}
+                        value={input}
+                        disabled={loading || !datasetSpec}
+                        onChange={(e) => setInput(e.target.value)}
+                        onScroll={(e) => {
+                            if (inputBackdropRef.current) {
+                                inputBackdropRef.current.scrollTop = e.target.scrollTop;
+                                inputBackdropRef.current.scrollLeft = e.target.scrollLeft;
+                            }
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+                        }}
+                    />
+                </div>
                 <button
                     className="dm-chat__send"
                     type="button"

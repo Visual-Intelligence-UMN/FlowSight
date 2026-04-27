@@ -442,28 +442,93 @@
     flex-shrink: 0;
 }
 
-.dm-chat__input {
+.dm-chat__input-shell {
+    position: relative;
     flex: 1;
-    resize: none;
-    background: var(--dm-node-item-bg);
+    min-width: 0;
     border: 1px solid var(--dm-border-panel);
+    border-radius: 8px;
+    background: var(--dm-node-item-bg);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dm-chat__input-backdrop,
+.dm-chat__input {
+    min-height: 74px;
     border-radius: 8px;
     padding: 8px 10px;
     font-size: 12.5px;
     font-family: inherit;
-    color: var(--dm-text-primary);
     line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.dm-chat__input-backdrop {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    background: transparent;
+    color: var(--dm-text-primary);
+    pointer-events: none;
+    scrollbar-width: none;
+}
+
+.dm-chat__input-backdrop::-webkit-scrollbar {
+    display: none;
+}
+
+.dm-chat__input-placeholder {
+    color: var(--dm-text-muted);
+}
+
+.dm-chat__input {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    resize: none;
+    background: transparent;
+    border: none;
+    color: transparent;
+    caret-color: var(--dm-text-primary);
     outline: none;
     scrollbar-width: thin;
 }
 
-.dm-chat__input:focus {
+.dm-chat__input-shell:focus-within .dm-chat__input-backdrop {
+    background: transparent;
+}
+
+.dm-chat__input-shell:focus-within {
     border-color: var(--dm-accent);
     background: var(--dm-bg-panel);
 }
 
-.dm-chat__input::placeholder {
-    color: var(--dm-text-muted);
+.dm-chat__inline-mention {
+    display: inline;
+    border-radius: 999px;
+    color: var(--dm-accent);
+    font-weight: 600;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.dm-chat__inline-mention--resolved {
+    color: var(--dm-accent);
+    background: rgba(99, 102, 241, 0.12);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+}
+
+.dm-chat__inline-mention--partial {
+    color: #0f766e;
+    background: rgba(20, 184, 166, 0.12);
+    box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.12);
+}
+
+.dm-chat__inline-mention--empty {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
 }
 
 .dm-chat__send {
@@ -558,6 +623,12 @@
 
 .dm-canvas .react-flow__controls-button:hover {
     background: var(--dm-accent-dim);
+}
+
+.dm-canvas .react-flow__node.dm-rf-node--dimmed {
+    opacity: 0.28;
+    filter: grayscale(1) saturate(0.35);
+    transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
 .dm-canvas .react-flow__minimap {

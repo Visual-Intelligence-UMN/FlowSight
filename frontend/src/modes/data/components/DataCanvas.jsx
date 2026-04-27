@@ -65,6 +65,7 @@ function LayoutEngine() {
 function DataCanvas({ nodeTypes = {}, edgeTypes = {}, onPaneClick: externalPaneClick }) {
     const nodes           = useDataModeStore((s) => s.nodes);
     const edges           = useDataModeStore((s) => s.edges);
+    const highlightedNodeIds = useDataModeStore((s) => s.highlightedNodeIds);
     const setNodes        = useDataModeStore((s) => s.setNodes);
     const setEdges        = useDataModeStore((s) => s.setEdges);
     const storeAddEdge    = useDataModeStore((s) => s.addEdge);
@@ -91,9 +92,19 @@ function DataCanvas({ nodeTypes = {}, edgeTypes = {}, onPaneClick: externalPaneC
         externalPaneClick?.(event);
     }, [setSelectedNode, externalPaneClick]);
 
+    const renderedNodes = highlightedNodeIds.length > 0
+        ? nodes.map((node) => ({
+            ...node,
+            className: [
+                node.className ?? '',
+                highlightedNodeIds.includes(node.id) ? '' : 'dm-rf-node--dimmed',
+            ].filter(Boolean).join(' '),
+        }))
+        : nodes;
+
     return (
         <ReactFlow
-            nodes={nodes}
+            nodes={renderedNodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}

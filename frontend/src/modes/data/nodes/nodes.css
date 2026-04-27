@@ -1053,6 +1053,7 @@
     flex-wrap: wrap;
     gap: 5px;
     margin-top: 4px;
+    margin-bottom: 2px;
 }
 
 .res__stat-pill {
