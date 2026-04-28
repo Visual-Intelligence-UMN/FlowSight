@@ -25,16 +25,19 @@ import { OPENAI_MODEL } from '../../../constants/models';
 
 const SYSTEM_PROMPT = `You are a statistical hypothesis designer. Given an exploratory insight and dataset context, generate one precisely phrased, testable statistical hypothesis.
 
+The hypothesis must be phrased as something to test, not as a claimed result. Do not pre-assert significance or imply the conclusion is already known.
+
 Return a JSON object with a single key "hypothesis" containing exactly these fields:
 - label: string (use the provided label exactly as given)
 - title: short title, max 8 words
-- statement: full statistical hypothesis statement (e.g. "There is a significant positive association between X and Y")
+- statement: full statistical hypothesis statement phrased neutrally (e.g. "Test whether there is a positive association between X and Y" or "Test whether Exam_Score differs across groups of Parent_Involvement")
 - type: one of "association", "group_difference", "categorical_relationship", "distribution_difference"
 - variables: array of exact column names from the schema that are involved
 - directionality: one of "positive", "negative", "non-directional", "two-tailed"
 - suggested_test: most appropriate statistical test name (e.g. "Pearson correlation", "Mann-Whitney U test", "Chi-square test of independence")
 - assumption_notes: one sentence describing the key statistical assumptions to verify before running the test
 - visualization_suggestion: one sentence naming a specific chart type that would help explore this hypothesis visually
+- chart_type: best chart for the result node. Same options as insight chart_type: "scatter", "grouped_bar", "histogram", "histogram_outlier", "correlation_heatmap". Must match the columns in "variables" — do not pick scatter if any variable is categorical.
 
 Be specific — reference actual column names and mention observed statistics where relevant.`;
 

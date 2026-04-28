@@ -18,6 +18,7 @@
 
 import { getApiKey, OPENAI_API_URL } from '../../../constants/api';
 import { OPENAI_MODEL } from '../../../constants/models';
+import { isIdentifierLikeColumn } from '../nodes/charts/chartData';
 
 const SYSTEM_PROMPT = `You are a data analysis assistant. Given a dataset schema with column statistics, generate 3-5 exploratory analytical insights that a researcher should investigate.
 
@@ -27,14 +28,27 @@ Return a JSON object with a single key "insights" containing an array. Each item
 - description: 1-2 sentence plain-language explanation
 - columns_involved: array of exact column names from the schema that are relevant
 - reason: one sentence explaining why this is worth investigating analytically
+- chart_type: the single best chart to visualise this insight given the column types. Choose from:
+    "scatter"              — two numeric columns, shows individual points and correlation trend
+    "grouped_bar"          — one categorical + one numeric, compares means across groups
+    "histogram"            — one numeric column, shows its value distribution
+    "histogram_outlier"    — one numeric column where outliers are the focus; highlights values beyond Q3+1.5×IQR
+    "correlation_heatmap"  — two or more numeric columns; shows a pairwise correlation matrix
+
+Pick the chart that most directly lets a viewer see the pattern described in the insight. Consider column types: a categorical column cannot appear on a scatter axis.
 
 Be specific — reference actual column names and observed statistics in your descriptions.`;
 
 /**
  * Build the user message from dataset metadata and spec.
  */
+function isMeaningfulCol(c) {
+    if (isIdentifierLikeColumn(c)) return false;
+    return true;
+}
+
 function buildPrompt(metadata, spec, description) {
-    const colLines = spec.columns.map((c) => {
+    const colLines = spec.columns.filter(isMeaningfulCol).map((c) => {
         const base = `  - ${c.name} (${c.type}): ${c.missing_count} missing, ${c.unique_count} unique`;
         if (c.type === 'numeric' && c.stats) {
             const { mean, median, min, max, std } = c.stats;

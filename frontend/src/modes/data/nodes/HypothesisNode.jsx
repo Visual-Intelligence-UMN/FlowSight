@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import useDataModeStore from '../store/useDataModeStore';
 import { runTest, fetchTestResult } from '../api/statisticsService';
+import { buildFallbackResultEvidence } from '../utils/evidenceModel';
 import './nodes.css';
 
 const TYPE_LABEL = {
@@ -25,7 +26,10 @@ const RESULT_EDGE = {
 };
 
 function HypothesisNode({ id, data, selected }) {
-    const updateNodeData = useDataModeStore((s) => s.updateNodeData);
+    const updateNodeData          = useDataModeStore((s) => s.updateNodeData);
+    const addResultRecord         = useDataModeStore((s) => s.addResultRecord);
+    const updateHypothesisStatus  = useDataModeStore((s) => s.updateHypothesisStatus);
+    const updateHypothesisStatement = useDataModeStore((s) => s.updateHypothesisStatement);
     const [editing, setEditing]       = useState(false);
     const [draft, setDraft]           = useState('');
     // 'idle' | 'running' | 'needs_consent' | 'error'
@@ -41,16 +45,16 @@ function HypothesisNode({ id, data, selected }) {
         setDraft(data.statement ?? '');
         setEditing(true);
     };
-    const saveEdit   = () => { updateNodeData(id, { statement: draft }); setEditing(false); };
+    const saveEdit   = () => { updateHypothesisStatement(id, draft); setEditing(false); };
     const cancelEdit = () => setEditing(false);
 
     const handleAccept = (e) => {
         e.stopPropagation();
-        updateNodeData(id, { status: status === 'accepted' ? 'pending' : 'accepted' });
+        updateHypothesisStatus(id, status === 'accepted' ? 'pending' : 'accepted');
     };
     const handleReject = (e) => {
         e.stopPropagation();
-        updateNodeData(id, { status: status === 'rejected' ? 'pending' : 'rejected' });
+        updateHypothesisStatus(id, status === 'rejected' ? 'pending' : 'rejected');
     };
 
     // ── Spawn a ResultNode below this hypothesis ──────────────────────────
@@ -65,18 +69,51 @@ function HypothesisNode({ id, data, selected }) {
             .filter((tid) => nodes.find((n) => n.id === tid)?.type === 'result')
             .length;
 
-        const resultId = `result-${id}-${Date.now()}`;
+        const resultId  = `result-${id}-${Date.now()}`;
+        const { allocateResultIdentifier } = useDataModeStore.getState();
+        const identifier = allocateResultIdentifier();
+        const columns   = data.variables ?? [];
+        const testType  = result.testType ?? data.type ?? '';
+        const evidence  = result.evidence ?? buildFallbackResultEvidence({
+            hypothesisType: data.type ?? '',
+            chartType: data.chart_type ?? '',
+            variables: columns,
+            stat: result.stat ?? null,
+            pValue: result.pValue ?? null,
+            significant: result.significant ?? false,
+            method: result.method ?? data.suggested_test ?? '',
+        });
         addNode({
             id:       resultId,
             type:     'result',
             position: { x: pos.x + siblings * 380, y: pos.y + 280 },
-            data:     result,
+            data:     {
+                ...result,
+                identifier,
+                columns,
+                testType,
+                chart_type: data.chart_type ?? '',
+                evidence,
+            },
         });
         addEdge({
             id:     `e-${id}-${resultId}`,
             source: id,
             target: resultId,
             style:  RESULT_EDGE,
+        });
+        addResultRecord({
+            nodeId:                  resultId,
+            parentHypothesisNodeId:  id,
+            method:                  result.method ?? '',
+            testType:                result.testType ?? testType,
+            columns,
+            stat:                    result.stat ?? null,
+            pValue:                  result.pValue ?? null,
+            significant:             result.significant ?? false,
+            summary:                 result.summary ?? '',
+            aiAssisted:              result.aiAssisted ?? false,
+            evidence,
         });
     }
 

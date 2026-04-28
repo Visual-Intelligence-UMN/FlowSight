@@ -3,6 +3,7 @@ import { Handle, Position } from '@xyflow/react';
 import useDataModeStore from '../store/useDataModeStore';
 import { fetchInsights } from '../api/insightService';
 import { NumericCharts, CategoricalChart, CompletenessChart } from './ColumnChart';
+import { isVisualizableSummaryColumn } from './charts/chartData';
 import './nodes.css';
 
 const EDGE_INSIGHT = {
@@ -33,7 +34,7 @@ function CollapsedSummary({ spec, selected }) {
 
 // ── Dashboard column card (one per data column, charts always visible) ──────
 
-function NumericCard({ col }) {
+function NumericCard({ col, chartsWide = false }) {
     return (
         <div className="dsn__db-card">
             <div className="dsn__db-card-name">{col.name}</div>
@@ -44,7 +45,7 @@ function NumericCard({ col }) {
                 {col.stats?.min  != null && <span title="range">{col.stats.min}–{col.stats.max}</span>}
                 {col.stats?.std  != null && <span title="std">sd {col.stats.std}</span>}
             </div>
-            <NumericCharts col={col} />
+            <NumericCharts col={col} wide={chartsWide} />
         </div>
     );
 }
@@ -68,14 +69,30 @@ function CategoricalCard({ col }) {
 // ── Expanded view ───────────────────────────────────────────────────────────
 
 function ExpandedSummary({ id, spec, selected }) {
-    const [insightStatus, setInsightStatus] = useState('idle');
-    const [expandedCols, setExpandedCols]   = useState(new Set());
-
-    const isDashboard = spec.columnCount < 10;
-
     const numericCols  = spec.columns.filter((c) => c.type === 'numeric');
+    const visualNumericCols = numericCols.filter(isVisualizableSummaryColumn);
     const catCols      = spec.columns.filter((c) => c.type === 'categorical');
     const datetimeCols = spec.columns.filter((c) => c.type === 'datetime');
+    const isDashboard = spec.columnCount < 10;
+    const visiblePreviewCols = !isDashboard
+        ? [...visualNumericCols, ...catCols, ...datetimeCols].slice(0, 6)
+        : [];
+    const previewColNames = new Set(visiblePreviewCols.map((col) => col.name));
+    const remainingNumericCols = visualNumericCols.filter((col) => !previewColNames.has(col.name));
+    const remainingCategoricalCols = [...catCols, ...datetimeCols].filter(
+        (col) => !previewColNames.has(col.name)
+    );
+    const defaultExpandedCols = new Set();
+
+    const [insightStatus, setInsightStatus] = useState('idle');
+    const [expandedCols, setExpandedCols]   = useState(defaultExpandedCols);
+
+    const getDashboardSectionProps = (count) => ({
+        className: 'dsn__db-col',
+        style: {
+            '--dsn-dashboard-cols': Math.max(1, count),
+        },
+    });
 
     const toggleCol = (name) =>
         setExpandedCols((prev) => {
@@ -110,19 +127,32 @@ function ExpandedSummary({ id, spec, selected }) {
             const pos      = thisNode?.position ?? { x: 780, y: 200 };
             const spacing  = 320;
             const startX   = pos.x - ((insights.length - 1) * spacing) / 2;
-
+            const { addInsightRecord, allocateInsightIdentifier } = useDataModeStore.getState();
             insights.forEach((insight, i) => {
+                const identifier = allocateInsightIdentifier(insight.type ?? '');
                 addNode({
                     id:       insight.id,
                     type:     'insight',
                     position: { x: startX + i * spacing, y: pos.y + 300 },
-                    data:     insight,
+                    data:     { ...insight, identifier },
                 });
                 addEdge({
-                    id:     `e-${id}-${insight.id}`,
-                    source: id,
-                    target: insight.id,
-                    style:  EDGE_INSIGHT,
+                    id:           `e-${id}-${insight.id}`,
+                    source:       id,
+                    sourceHandle: 'insights-out',
+                    target:       insight.id,
+                    style:        EDGE_INSIGHT,
+                });
+                addInsightRecord({
+                    nodeId:          insight.id,
+                    insightId:       insight.id,
+                    title:           insight.title ?? '',
+                    type:            insight.type ?? '',
+                    description:     insight.description ?? '',
+                    columnsInvolved: insight.columns_involved ?? [],
+                    reason:          insight.reason ?? '',
+                    resolvedChartType: null,
+                    resolvedColumns:   [],
                 });
             });
 
@@ -133,9 +163,36 @@ function ExpandedSummary({ id, spec, selected }) {
         }
     };
 
+    const handleCustomHypothesis = () => {
+        const { nodes, addNode, addEdge } = useDataModeStore.getState();
+        const thisNode = nodes.find((n) => n.id === id);
+        const pos      = thisNode?.position ?? { x: 400, y: 400 };
+        const siblings = useDataModeStore.getState().edges
+            .filter((e) => e.source === id)
+            .map((e) => e.target)
+            .filter((tid) => nodes.find((n) => n.id === tid)?.type === 'customhypothesis')
+            .length;
+
+        const nodeId = `custom-hyp-${Date.now()}`;
+        addNode({
+            id:   nodeId,
+            type: 'customhypothesis',
+            position: { x: pos.x + 420 + siblings * 320, y: pos.y + 300 },
+            data: {},
+        });
+        addEdge({
+            id:           `e-${id}-${nodeId}`,
+            source:       id,
+            sourceHandle: 'custom-hyp-out',
+            target:       nodeId,
+            style:        { stroke: '#7c3aed', strokeWidth: 1.5, strokeDasharray: '5,3' },
+        });
+    };
+
     const nodeClass = [
         'dm-node dm-node--summary',
         isDashboard ? 'dm-node--summary-dashboard' : 'dm-node--summary-expanded',
+        !isDashboard && visiblePreviewCols.length > 0 ? 'dm-node--summary-expanded-preview' : '',
         selected ? 'dm-node--selected' : '',
     ].filter(Boolean).join(' ');
 
@@ -165,19 +222,23 @@ function ExpandedSummary({ id, spec, selected }) {
             {isDashboard ? (
                 <div className="dsn__dashboard">
 
-                    {numericCols.length > 0 && (
-                        <div className="dsn__db-col">
+                    {visualNumericCols.length > 0 && (
+                        <div {...getDashboardSectionProps(visualNumericCols.length)}>
                             <div className="dsn__group-label">
-                                Numeric ({numericCols.length})
+                                Numeric ({visualNumericCols.length})
                             </div>
-                            {numericCols.map((col) => (
-                                <NumericCard key={col.name} col={col} />
+                            {visualNumericCols.map((col) => (
+                                <NumericCard
+                                    key={col.name}
+                                    col={col}
+                                    chartsWide={visualNumericCols.length === 1}
+                                />
                             ))}
                         </div>
                     )}
 
                     {catCols.length > 0 && (
-                        <div className="dsn__db-col">
+                        <div {...getDashboardSectionProps(catCols.length)}>
                             <div className="dsn__group-label">
                                 Categorical ({catCols.length})
                             </div>
@@ -188,7 +249,7 @@ function ExpandedSummary({ id, spec, selected }) {
                     )}
 
                     {datetimeCols.length > 0 && (
-                        <div className="dsn__db-col">
+                        <div {...getDashboardSectionProps(datetimeCols.length)}>
                             <div className="dsn__group-label">
                                 Datetime ({datetimeCols.length})
                             </div>
@@ -202,12 +263,30 @@ function ExpandedSummary({ id, spec, selected }) {
 
             ) : (
                 /* ── Scrollable list (≥ 10 columns) ──────────────────────── */
-                <div className="dsn__scroll">
+                <>
+                    {visiblePreviewCols.length > 0 && (
+                        <div className="dsn__dashboard dsn__dashboard--preview">
+                            <div {...getDashboardSectionProps(Math.min(2, visiblePreviewCols.length))}>
+                                <div className="dsn__group-label">
+                                    Visual Preview ({visiblePreviewCols.length})
+                                </div>
+                                {visiblePreviewCols.map((col) => (
+                                    col.type === 'numeric'
+                                        ? <NumericCard key={col.name} col={col} chartsWide={false} />
+                                        : <CategoricalCard key={col.name} col={col} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                    {numericCols.length > 0 && (
+                    <div className="dsn__divider" />
+
+                    <div className="dsn__scroll">
+
+                    {remainingNumericCols.length > 0 && (
                         <section>
-                            <div className="dsn__group-label">Numeric ({numericCols.length})</div>
-                            {numericCols.map((col) => {
+                            <div className="dsn__group-label">More Numeric ({remainingNumericCols.length})</div>
+                            {remainingNumericCols.map((col) => {
                                 const open = expandedCols.has(col.name);
                                 return (
                                     <div key={col.name} className="dsn__col-row">
@@ -229,12 +308,12 @@ function ExpandedSummary({ id, spec, selected }) {
                         </section>
                     )}
 
-                    {[...catCols, ...datetimeCols].length > 0 && (
+                    {remainingCategoricalCols.length > 0 && (
                         <section>
                             <div className="dsn__group-label">
-                                Categorical ({catCols.length + datetimeCols.length})
+                                More Categorical ({remainingCategoricalCols.length})
                             </div>
-                            {[...catCols, ...datetimeCols].map((col) => {
+                            {remainingCategoricalCols.map((col) => {
                                 const open = expandedCols.has(col.name);
                                 return (
                                     <div key={col.name} className="dsn__col-row">
@@ -256,25 +335,44 @@ function ExpandedSummary({ id, spec, selected }) {
                         </section>
                     )}
 
-                </div>
+                    </div>
+                </>
             )}
 
-            {/* Generate Insights */}
+            {/* Actions */}
             <div className="dsn__divider" />
-            <div className="dm-node__actions">
-                <button
-                    className="dm-node__action-btn dm-node__action-btn--primary"
-                    onClick={handleGenerateInsights}
-                    disabled={insightStatus === 'loading'}
-                >
-                    {insightStatus === 'loading' ? 'Thinking...'    :
-                     insightStatus === 'error'   ? 'Retry Insights' :
-                                                   'Generate Insights'}
-                </button>
+            <div className="dsn__actions-panel">
+                <div className="dsn__actions-label">Analysis Actions</div>
+                <div className="dm-node__actions dsn__actions-row">
+                    <div style={{ position: 'relative', flex: 1 }}>
+                        <button
+                            className="dm-node__action-btn dm-node__action-btn--primary"
+                            style={{ width: '100%' }}
+                            onClick={handleGenerateInsights}
+                            disabled={insightStatus === 'loading'}
+                        >
+                            {insightStatus === 'loading' ? 'Thinking...'    :
+                             insightStatus === 'error'   ? 'Retry Insights' :
+                                                           'Generate Insights'}
+                        </button>
+                        <Handle type="source" position={Position.Bottom} id="insights-out"
+                            style={{ bottom: -4, left: '50%', transform: 'translateX(-50%)' }} />
+                    </div>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                        <button
+                            className="dm-node__action-btn dm-node__action-btn--ghost"
+                            style={{ width: '100%' }}
+                            onClick={handleCustomHypothesis}
+                        >
+                            Custom Hypothesis
+                        </button>
+                        <Handle type="source" position={Position.Bottom} id="custom-hyp-out"
+                            style={{ bottom: -4, left: '50%', transform: 'translateX(-50%)' }} />
+                    </div>
+                </div>
             </div>
 
-            <Handle type="target" position={Position.Top}    />
-            <Handle type="source" position={Position.Bottom} />
+            <Handle type="target" position={Position.Top} />
         </div>
     );
 }

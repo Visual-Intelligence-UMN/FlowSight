@@ -255,6 +255,17 @@
     letter-spacing: 0.5px;
 }
 
+.dm-node__header-id {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    letter-spacing: 0.5px;
+}
+
 .hyp__status {
     font-size: 9px;
     font-weight: 700;
@@ -348,6 +359,59 @@
     font-style: italic;
     margin-top: 1px;
     line-height: 1.4;
+}
+
+.res__honesty {
+    display: grid;
+    gap: 6px;
+    margin: 2px 0 4px;
+    padding: 8px 9px;
+    border-radius: 8px;
+    background: rgba(16, 185, 129, 0.06);
+    border: 1px solid rgba(16, 185, 129, 0.14);
+}
+
+.res__honesty-headline {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    color: #0f172a;
+}
+
+.res__honesty-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.res__honesty-chip {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-radius: 999px;
+}
+
+.res__honesty-chip--sig {
+    background: rgba(16, 185, 129, 0.12);
+    color: #059669;
+}
+
+.res__honesty-chip--ns {
+    background: rgba(244, 63, 94, 0.1);
+    color: #e11d48;
+}
+
+.res__honesty-chip--strength {
+    background: rgba(99, 102, 241, 0.1);
+    color: #6366f1;
+}
+
+.res__honesty-copy {
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--dm-node-meta);
 }
 
 /* Hypothesis statement edit */
@@ -458,6 +522,10 @@
     max-width: 340px;
 }
 
+.dm-node--summary-expanded-preview {
+    max-width: 760px;
+}
+
 /* Dashboard state (< 10 columns) — wide node, side-by-side groups */
 .dm-node--summary-dashboard {
     max-width: none;
@@ -474,23 +542,22 @@
 
 /* Within each column type: cards flow horizontally, wrap to next row */
 .dsn__db-col {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: repeat(var(--dsn-dashboard-cols, 3), minmax(0, 1fr));
+    align-items: start;
     gap: 10px;
 }
 
 /* Group label is a full-width header above the cards */
 .dsn__db-col > .dsn__group-label {
-    flex-basis: 100%;
+    grid-column: 1 / -1;
     padding-top: 0;
 }
 
 /* Card for a single data column */
 .dsn__db-card {
-    flex: 1 1 240px;
-    min-width: 240px;
+    min-width: 0;
+    max-width: none;
     background: var(--dm-node-item-bg, rgba(0,0,0,0.03));
     border: 1px solid var(--dm-node-divider);
     border-radius: 8px;
@@ -498,6 +565,16 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.dsn__chart-suppressed {
+    font-size: 10px;
+    line-height: 1.45;
+    color: var(--dm-text-muted);
+    background: var(--dm-node-item-bg);
+    border: 1px dashed var(--dm-node-divider);
+    border-radius: 8px;
+    padding: 10px;
 }
 
 /* Card header: column name + optional type badge */
@@ -522,6 +599,28 @@
     height: 1px;
     background: var(--dm-node-divider);
     margin: 0 10px;
+}
+
+.dsn__actions-panel {
+    margin: 12px 10px 10px;
+    padding: 10px;
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    border-radius: 10px;
+    background: rgba(99, 102, 241, 0.06);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.dsn__actions-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.9px;
+    color: var(--dm-accent, #6366f1);
+    margin-bottom: 10px;
+}
+
+.dsn__actions-row {
+    padding: 0;
 }
 
 /* Scrollable column area */
@@ -707,6 +806,17 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.dsn__charts--numeric-wide {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px 16px;
+    align-items: start;
+}
+
+.dsn__charts--numeric-wide .dsn__chart-section {
+    min-width: 0;
 }
 
 /* One chart section (title + SVG) */
@@ -1042,6 +1152,7 @@
     flex-wrap: wrap;
     gap: 5px;
     margin-top: 4px;
+    margin-bottom: 2px;
 }
 
 .res__stat-pill {
@@ -1120,4 +1231,102 @@
     border: 1px solid var(--dm-accent-mid);
     color: var(--dm-accent);
     white-space: nowrap;
+}
+
+/* ── CustomHypothesisNode ─────────────────────────────────────────────── */
+
+.dm-node--custom-hyp .dm-node__header {
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+}
+
+.chyp__input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    border-radius: 6px;
+    border: 1px solid var(--dm-node-divider);
+    background: var(--dm-bg-node);
+    color: var(--dm-text-primary);
+    font-size: 11.5px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.chyp__input:focus {
+    border-color: #7c3aed;
+}
+
+.chyp__loading {
+    font-size: 11px;
+    color: var(--dm-text-muted);
+    font-style: italic;
+    padding: 6px 0;
+    text-align: center;
+}
+
+.chyp__hypothesis-text {
+    font-size: 11.5px;
+    color: var(--dm-text-primary);
+    font-style: italic;
+    opacity: 0.8;
+    margin-bottom: 4px;
+}
+
+.chyp__suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.chyp__suggestion {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 7px;
+    border: 1.5px solid var(--dm-node-divider);
+    background: var(--dm-bg-node);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.chyp__suggestion:hover {
+    border-color: #7c3aed;
+}
+.chyp__suggestion--selected {
+    border-color: #7c3aed;
+    background: rgba(124, 58, 237, 0.07);
+}
+
+.chyp__sug-name {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--dm-text-primary);
+    margin-bottom: 2px;
+}
+
+.chyp__sug-desc {
+    font-size: 10.5px;
+    color: var(--dm-text-muted);
+    line-height: 1.4;
+}
+
+.chyp__section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.chyp__divider {
+    height: 1px;
+    background: var(--dm-node-divider);
+    margin: 6px 0;
+}
+
+.chyp__inline-btn {
+    align-self: flex-start;
+    flex: none !important;
+    margin-top: 2px;
+    padding: 4px 10px !important;
+    font-size: 10.5px !important;
 }

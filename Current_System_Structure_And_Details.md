@@ -1,9 +1,9 @@
-# MindMapper — Current System Structure & Details
+# StatViz — Current System Structure & Details
 
-> **Last Updated:** March 2026  
-> **Author:** Dipan Bag (bag00003@umn.edu)  
-> **Project:** UMN Capstone Project, Spring 2026  
-> **Purpose:** Complete onboarding reference for new developers — covers every file, module, data flow, and design decision currently in the codebase.
+> **Last Updated:** April 24, 2026
+> **Author:** Dipan Bag (bag00003@umn.edu)
+> **Project:** UMN Capstone Project, Spring 2026
+> **Hosted At:** GitHub Pages via `actions/deploy-pages`, route `/mindmapper/statviz`
 
 ---
 
@@ -13,769 +13,833 @@
 2. [High-Level Architecture](#2-high-level-architecture)
 3. [File & Directory Structure](#3-file--directory-structure)
 4. [Tech Stack & Dependencies](#4-tech-stack--dependencies)
-5. [Entry Points & Bootstrap Flow](#5-entry-points--bootstrap-flow)
-6. [Component Architecture](#6-component-architecture)
-   - [MindMapCanvas.jsx](#mindmapcanvasjsx--the-orchestrator)
-   - [QueryNode.jsx](#querynodejsx--user-query-card)
-   - [AnswerNode.jsx](#answernodejsx--ai-response-card)
-   - [SourcesNode.jsx](#sourcesnodejsx--web-citations-card)
-7. [State Management](#7-state-management)
-8. [Services Layer](#8-services-layer)
-   - [perplexity.js (Primary/Active)](#perplexityjs--primary-active-ai-service)
-   - [openai.js (Secondary/Unused)](#openaijs--secondary-unused-ai-service)
-9. [Constants & Configuration](#9-constants--configuration)
-10. [Data Flow Diagrams](#10-data-flow-diagrams)
-    - [New Query Flow](#a-new-query-flow)
-    - [Bullet Expand Flow](#b-bullet-expand-flow)
-    - [Sources Lookup Flow](#c-sources-lookup-flow)
-    - [Custom Query Flow](#d-custom-query-flow)
-11. [Node Graph Model (Edges & Handles)](#11-node-graph-model-edges--handles)
-12. [Styling System](#12-styling-system)
-13. [Environment Variables & API Keys](#13-environment-variables--api-keys)
-14. [Inter-Module Communication Pattern](#14-inter-module-communication-pattern)
-15. [Known Architecture Gaps & Planned Work](#15-known-architecture-gaps--planned-work)
+5. [Routing & Entry Points](#5-routing--entry-points)
+6. [Zustand Store](#6-zustand-store)
+7. [Component Architecture](#7-component-architecture)
+8. [Node Types Reference](#8-node-types-reference)
+9. [Charts System](#9-charts-system)
+10. [API Services Layer](#10-api-services-layer)
+11. [Statistics Engine](#11-statistics-engine)
+12. [CSV Parser](#12-csv-parser)
+13. [Layout Engine](#13-layout-engine)
+14. [Right Sidebar: Theme + Ask AI](#14-right-sidebar-theme--ask-ai)
+15. [Theming System](#15-theming-system)
+16. [Key Workflows](#16-key-workflows)
+17. [Edge & Handle Conventions](#17-edge--handle-conventions)
+18. [API Key Handling](#18-api-key-handling)
+19. [Deployment](#19-deployment)
 
 ---
 
 ## 1. Project Overview
 
-**MindMapper** is a canvas-based, node-driven interface for exploring ideas with AI. The user can:
-- Place **Query nodes** (questions/prompts) anywhere on an infinite 2D canvas
-- Automatically receive **Answer nodes** (AI-generated bullet-point responses) connected by edges
-- Interactively expand any bullet point into a deeper **Answer node**, fetch web **Sources nodes**, or ask **Custom follow-up queries**
-- The resulting graph grows organically, preserving the relational structure of the exploration session
+StatViz is a browser-only, node-based exploratory data analysis workspace. Users upload a CSV dataset, inspect its summary, generate AI-assisted insights, turn those insights into statistical hypotheses, run tests in-browser when possible, and capture results as connected nodes on a React Flow canvas.
 
-The current implementation is a **fully client-side React SPA** — there is no backend running yet. All AI calls originate directly from the browser using the Perplexity Sonar API (and an unused OpenAI module).
+The current system is centered around a **data analysis pipeline**:
+
+1. Upload dataset
+2. Parse schema and compute column statistics
+3. Auto-generate a dataset description
+4. Expand into a dataset summary node
+5. Generate AI insights
+6. Generate or author hypotheses
+7. Run statistical tests or AI-assisted fallback estimates
+8. Query the full evolving analysis from the right-side "Ask AI" chat
+
+There is no backend. CSV parsing, statistics, graph state, charts, and OpenAI requests all happen client-side in the browser.
+
+**Current headline capabilities:**
+- CSV upload by drag-and-drop or click-to-upload popup
+- Dataset description generation from schema
+- Summary node with completeness chart and per-column charts
+- AI-generated insight nodes
+- AI-generated hypothesis nodes
+- Custom free-text hypothesis workflow
+- In-browser statistical testing using `jstat`
+- AI fallback for unsupported tests
+- Right sidebar with dark mode toggle and dataset-aware AI chat
+- Client-side tool calling over the live dataset and analysis context
 
 ---
 
 ## 2. High-Level Architecture
 
+```text
+Browser
+│
+├── React Router
+│   ├── /          → LandingPage
+│   └── /statviz   → AppShell → modes/data/DataModeApp
+│
+├── DataModeApp
+│   ├── Handles theme state
+│   ├── Handles CSV drag/drop and upload popup
+│   ├── Mounts right sidebar (dark mode + Ask AI)
+│   ├── Mounts DataCanvas
+│   └── Gates usage through ApiKeyModal
+│
+├── Zustand Store (useDataModeStore)
+│   ├── Graph state: nodes, edges, selection
+│   ├── Dataset state: metadata, spec, description
+│   └── Analysis registry: dataset, insights, hypotheses, results
+│
+├── DataCanvas (React Flow)
+│   ├── Renders custom nodes
+│   ├── Syncs graph updates with Zustand
+│   └── Runs Dagre auto-layout on structural changes
+│
+├── Data Nodes
+│   ├── Dataset → Summary
+│   ├── Summary → Insights
+│   ├── Insight → Hypothesis
+│   ├── Hypothesis → Result
+│   └── Summary → Custom Hypothesis → Result
+│
+└── AI / Stats Layer
+    ├── descriptionService
+    ├── insightService
+    ├── hypothesisService
+    ├── customHypothesisService
+    ├── chartTypeService
+    ├── statisticsService
+    └── chatTools + ChatPanel
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Browser (Client)                     │
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │              React Application (Vite SPA)         │   │
-│  │                                                  │   │
-│  │  ┌──────────┐   renders   ┌──────────────────┐   │   │
-│  │  │  App.jsx │────────────▶│ MindMapCanvas.jsx│   │   │
-│  │  └──────────┘             │ (ReactFlow host) │   │   │
-│  │                           └────────┬─────────┘   │   │
-│  │                    ┌───────────────┼──────────┐  │   │
-│  │               renders         renders    renders │   │
-│  │                    ▼               ▼          ▼  │   │
-│  │            ┌───────────┐  ┌────────────┐  ┌─────────────┐│
-│  │            │ QueryNode │  │ AnswerNode │  │ SourcesNode ││
-│  │            └───────────┘  └────────────┘  └─────────────┘│
-│  │                                                  │   │
-│  │  ┌──────────────────────────────────────────┐   │   │
-│  │  │              Services Layer              │   │   │
-│  │  │   perplexity.js (active)                 │   │   │
-│  │  │   openai.js     (inactive/legacy)        │   │   │
-│  │  └──────────────────────────────────────────┘   │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-        │                              │
-        ▼                              ▼
-┌───────────────────┐       ┌─────────────────────┐
-│  Perplexity API   │       │  microlink.io API   │
-│  (sonar model)    │       │  (OG image fetch)   │
-│  api.perplexity.ai│       │  api.microlink.io   │
-└───────────────────┘       └─────────────────────┘
-```
-
-> **No backend exists today.** The README mentions a planned FastAPI/PostgreSQL/FAISS backend, but none has been scaffolded yet.
 
 ---
 
 ## 3. File & Directory Structure
 
-```
-mindmapper/                             ← repo root
-├── README.md                           ← Project overview & setup guide
-├── Current_System_Structure_And_Details.md  ← THIS FILE
-├── docs/                               ← Excluded from this doc (PDFs, proposals)
-│   └── Proposal_V1.pdf
-└── frontend/                           ← Entire application lives here
-    ├── index.html                      ← HTML shell; mounts React at #root
-    ├── package.json                    ← Dependencies & npm scripts
-    ├── package-lock.json               ← Lock file
-    ├── vite.config.js                  ← Vite build config (React plugin only)
-    ├── eslint.config.js                ← ESLint flat config (react-hooks, react-refresh)
-    ├── .env                            ← API keys (gitignored in prod, present in dev)
+```text
+mindmapper/
+├── Current_System_Structure_And_Details.md   ← THIS FILE
+├── README.md
+├── docs/
+├── .github/workflows/deploy.yml
+└── frontend/
+    ├── index.html
+    ├── vite.config.js
+    ├── package.json
     ├── public/
-    │   └── vite.svg                    ← Favicon
+    │   └── 404.html
     └── src/
-        ├── main.jsx                    ← React entry point; mounts <App/> into #root
-        ├── App.jsx                     ← Root component; renders <MindMapCanvas/>
-        ├── index.css                   ← Global CSS reset & base typography
-        ├── App.css                     ← Minimal app-level styles
-        ├── assets/                     ← Static assets (empty currently)
-        ├── styles/                     ← Empty; reserved for future global styles
+        ├── main.jsx
+        ├── App.jsx
+        ├── index.css
         ├── constants/
-        │   └── api.js                  ← API base URLs & key references
-        ├── services/
-        │   ├── perplexity.js           ← PRIMARY: all AI + sources calls
-        │   └── openai.js               ← INACTIVE: OpenAI SDK wrapper (unused)
-        └── components/
-            ├── index.js                ← Barrel export for all components
-            ├── MindMapCanvas.jsx       ← MAIN CANVAS; all state & node logic lives here
-            ├── MindMapCanvas.css       ← Panel, button, and ReactFlow override styles
-            ├── QueryNode.jsx           ← Green query/prompt node
-            ├── QueryNode.css           ← Green color scheme styles
-            ├── AnswerNode.jsx          ← Blue AI response node (bullet-point list)
-            ├── AnswerNode.css          ← Blue color scheme + hover action menu styles
-            ├── SourcesNode.jsx         ← Orange sources/citations node
-            └── SourcesNode.css         ← Orange color scheme + card grid styles
+        │   ├── api.js
+        │   └── models.js
+        ├── app/
+        │   ├── AppShell.jsx/.css
+        │   └── DataModeApp.jsx/.css          ← legacy scaffold, not the active route entry
+        ├── pages/
+        │   └── LandingPage.jsx/.css
+        ├── modes/
+        │   ├── qa/
+        │   │   └── QAModeApp.jsx             ← legacy / separate mode work
+        │   └── data/
+        │       ├── DataModeApp.jsx/.css      ← active Data Mode root
+        │       ├── store/
+        │       │   ├── useDataModeStore.js
+        │       │   └── analysisContext.js
+        │       ├── components/
+        │       │   ├── DataCanvas.jsx
+        │       │   ├── UploadPopup.jsx/.css
+        │       │   ├── ApiKeyModal.jsx/.css
+        │       │   ├── ChatPanel.jsx/.css
+        │       │   └── DatasetSidebar.jsx/.css   ← present but not currently mounted
+        │       ├── nodes/
+        │       │   ├── DatasetNode.jsx
+        │       │   ├── DatasetSummaryNode.jsx
+        │       │   ├── InsightNode.jsx
+        │       │   ├── HypothesisNode.jsx
+        │       │   ├── CustomHypothesisNode.jsx
+        │       │   ├── ResultNode.jsx
+        │       │   ├── ColumnNode.jsx
+        │       │   ├── TestNode.jsx
+        │       │   ├── InterpretationNode.jsx
+        │       │   ├── NextStepNode.jsx
+        │       │   ├── ColumnChart.jsx
+        │       │   ├── charts/
+        │       │   │   ├── InsightChart.jsx
+        │       │   │   ├── ResultChart.jsx
+        │       │   │   ├── chartData.js
+        │       │   │   └── charts.css
+        │       │   ├── nodes.css
+        │       │   └── index.js
+        │       ├── api/
+        │       │   ├── descriptionService.js
+        │       │   ├── insightService.js
+        │       │   ├── hypothesisService.js
+        │       │   ├── customHypothesisService.js
+        │       │   ├── chartTypeService.js
+        │       │   ├── statisticsService.js
+        │       │   └── chatTools.js
+        │       └── utils/
+        │           ├── csvParser.js
+        │           ├── layoutGraph.js
+        │           ├── insightEngine.js       ← older helper / not central to current flow
+        │           └── mockGraph.js
+        ├── components/                        ← older Q&A/canvas components
+        └── services/                          ← older OpenAI / Perplexity service layer
 ```
 
 ---
 
 ## 4. Tech Stack & Dependencies
 
-### Production Dependencies
+| Package | Role |
+|---------|------|
+| React 19 | UI framework |
+| React Router DOM 7 | Client-side routing |
+| `@xyflow/react` | Infinite canvas, nodes, edges, handles |
+| Zustand | Central app state |
+| Recharts | Node charts and mini charts |
+| `jstat` | In-browser statistical tests |
+| `@dagrejs/dagre` | Auto-layout engine |
+| `react-markdown` | Markdown rendering in chat assistant responses |
+| Vite | Build and dev tooling |
 
-| Package | Version | Role |
-|---------|---------|------|
-| `react` | ^19.2.0 | UI framework |
-| `react-dom` | ^19.2.0 | DOM renderer |
-| `@xyflow/react` | ^12.9.3 | Infinite canvas, node graph, edge routing |
-| `openai` | ^6.16.0 | OpenAI JS SDK (imported but not actively used) |
+**External API endpoint used by the current Data Mode flow:**
 
-### Dev Dependencies
+| Service | Endpoint | Purpose |
+|---------|----------|---------|
+| OpenAI | `https://api.openai.com/v1/chat/completions` | Dataset description, insights, hypotheses, chart resolution, custom hypothesis help, AI fallback tests, Ask AI chat |
 
-| Package | Version | Role |
-|---------|---------|------|
-| `vite` | ^7.2.4 | Build tool & dev server |
-| `@vitejs/plugin-react` | ^5.1.1 | JSX transform & HMR for React |
-| `eslint` | ^9.39.1 | Linting |
-| `eslint-plugin-react-hooks` | ^7.0.1 | Hooks lint rules |
-| `eslint-plugin-react-refresh` | ^0.4.24 | Vite HMR lint rules |
-| `@types/react`, `@types/react-dom` | ^19 | TypeScript type hints (used by IDEs) |
-| `globals` | ^16.5.0 | ESLint browser/node globals |
+**Model currently configured:** `gpt-4o-mini`
 
-### External APIs (No SDK, Raw Fetch)
+Note: `package.json` still includes the `openai` npm package, but the active data-mode services use raw `fetch`, not the SDK.
 
-| Service | Endpoint | Used For |
-|---------|----------|----------|
-| Perplexity Sonar | `https://api.perplexity.ai/chat/completions` | AI text responses & sources |
-| microlink.io | `https://api.microlink.io/` | Open Graph image thumbnails for sources |
+---
 
-### npm Scripts
+## 5. Routing & Entry Points
 
-```bash
-npm run dev      # Start Vite dev server at http://localhost:5173
-npm run build    # Production bundle → dist/
-npm run preview  # Serve production build locally
-npm run lint     # ESLint check
+Routing is defined in `frontend/src/main.jsx` using `BrowserRouter` with `basename={import.meta.env.BASE_URL}`.
+
+**Routes:**
+- `/` → `LandingPage`
+- `/statviz` → `AppShell` → `modes/data/DataModeApp`
+- `*` → redirect to `/`
+
+**Important current detail:**
+- The active Data Mode implementation is `frontend/src/modes/data/DataModeApp.jsx`
+- `frontend/src/app/DataModeApp.jsx` is an older scaffold and is not what the `/statviz` route mounts today
+
+**GitHub Pages SPA routing:**
+- `frontend/public/404.html` rewrites deep links into a `?p=` query parameter
+- `frontend/index.html` decodes that query before React mounts
+- This allows direct navigation to `/mindmapper/statviz`
+
+---
+
+## 6. Zustand Store
+
+**File:** `frontend/src/modes/data/store/useDataModeStore.js`
+
+The store is the source of truth for both the visual graph and the logical analysis record.
+
+### Core state
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `nodes` | `Node[]` | React Flow nodes |
+| `edges` | `Edge[]` | React Flow edges |
+| `selectedNode` | `Node \| null` | Current selection |
+| `datasetMetadata` | `object \| null` | File-level metadata |
+| `datasetSpec` | `object \| null` | Parsed schema and raw values |
+| `insightSuggestions` | `object[]` | Latest AI insight payload |
+| `datasetDescription` | `string` | AI-generated or user-edited description |
+| `workflowStep` | `string` | Current stage such as `idle`, `dataset`, `insight` |
+| `apiKey` | `string` | Session key from `sessionStorage` |
+
+### Analysis registry
+
+The app no longer relies only on `node.data` when preparing AI context. It also keeps a normalized analysis registry:
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `dataset` | object \| null | Clean dataset summary for prompts |
+| `insights` | `Map<nodeId, InsightRecord>` | Insight records independent of UI rendering |
+| `hypotheses` | `Map<nodeId, HypothesisRecord>` | Hypothesis status and metadata |
+| `results` | `Map<nodeId, ResultRecord>` | Test outcomes and AI-assist flags |
+
+This registry is assembled into a clean prompt object by `analysisContext.js`.
+
+### Important actions
+
+| Action | Description |
+|--------|-------------|
+| `setNodes`, `setEdges` | Replace arrays or use updater functions |
+| `addNode`, `addEdge` | Append graph items |
+| `removeNode` | Remove node and all connected edges |
+| `updateNodeData` | Patch one node's `data` |
+| `setDataset` | Save parsed metadata/spec and build dataset record |
+| `setDatasetDescription` | Update free-text description and mirror into dataset record |
+| `setInsights` | Store raw insight suggestions and move workflow step forward |
+| `setApiKey` | Persist key to `sessionStorage` and state |
+| `resetGraph` | Clear graph and analysis registry for a new upload |
+| `addInsightRecord` | Register insight in normalized analysis map |
+| `resolveInsightChart` | Save resolved chart type/columns and patch node data |
+| `addHypothesisRecord` | Register generated or custom hypothesis |
+| `updateHypothesisStatement` | Keep inline edits in sync between node and registry |
+| `updateHypothesisStatus` | Persist accepted/rejected/pending status |
+| `addResultRecord` | Register test result in analysis map |
+
+---
+
+## 7. Component Architecture
+
+### DataModeApp
+
+**File:** `frontend/src/modes/data/DataModeApp.jsx`
+
+This is the real Data Mode root.
+
+It is responsible for:
+- theme state (`light` / `dark`)
+- whole-shell drag-and-drop CSV upload
+- click-to-upload popup positioning
+- right sidebar open/close and resize behavior
+- mounting `ChatPanel`
+- mounting `DataCanvas`
+- gating the app with `ApiKeyModal`
+
+The right sidebar lives directly inside this component and currently contains:
+- a dark mode toggle
+- an "Ask AI" section with `ChatPanel`
+
+### DataCanvas
+
+**File:** `frontend/src/modes/data/components/DataCanvas.jsx`
+
+Wraps `ReactFlow` and synchronizes all node/edge changes with Zustand.
+
+It includes:
+- `Background`
+- `Controls`
+- `MiniMap`
+- a local `LayoutEngine` helper component
+
+### UploadPopup
+
+**File:** `frontend/src/modes/data/components/UploadPopup.jsx`
+
+Appears when the user clicks the empty canvas before uploading a dataset. It supports both clicking a file input and dropping a CSV onto the popup itself. On success it:
+
+1. parses the CSV
+2. resets prior graph state
+3. stores dataset metadata/spec
+4. spawns the initial dataset node
+
+### ApiKeyModal
+
+**File:** `frontend/src/modes/data/components/ApiKeyModal.jsx`
+
+Blocking modal shown when `apiKey` is empty. The copy explicitly tells the user the key is stored only for the browser session and sent directly to OpenAI.
+
+### ChatPanel
+
+**File:** `frontend/src/modes/data/components/ChatPanel.jsx`
+
+This is the mounted "Ask AI" experience in the right sidebar. It:
+- streams assistant responses token-by-token
+- supports OpenAI tool calling
+- renders tool outputs as cards, tables, and small charts
+- uses `datasetSpec` plus `buildAnalysisContext()` for dataset-aware conversations
+
+Tool result cards currently include:
+- column stats
+- sample values
+- statistical test outputs
+- filtered descriptive comparisons
+- correlation matrix heatmap
+- analysis summary metrics
+
+---
+
+## 8. Node Types Reference
+
+The active node registry in `frontend/src/modes/data/nodes/index.js` contains 10 node types:
+
+| Type key | Component | Current usage |
+|----------|-----------|---------------|
+| `dataset` | `DatasetNode` | Active |
+| `datasetsummary` | `DatasetSummaryNode` | Active |
+| `insight` | `InsightNode` | Active |
+| `hypothesis` | `HypothesisNode` | Active |
+| `customhypothesis` | `CustomHypothesisNode` | Active |
+| `result` | `ResultNode` | Active |
+| `column` | `ColumnNode` | Present, lightly used |
+| `test` | `TestNode` | Present, lightly used |
+| `interpretation` | `InterpretationNode` | Present, lightly used |
+| `nextstep` | `NextStepNode` | Present, lightly used |
+
+### DatasetNode
+
+Created immediately after upload. Shows filename, row count, column count, source, and an editable AI-generated dataset description textarea.
+
+Its main action is `View Summary` / `Expand Summary` / `Collapse Summary`, which creates or toggles the paired `DatasetSummaryNode`.
+
+### DatasetSummaryNode
+
+Acts as the main orchestration node for exploration.
+
+Current behaviors:
+- collapsed view: compact row/column counts only
+- expanded view: completeness chart plus per-column details
+- dashboard mode when `columnCount < 10`
+- scrollable expandable column list when dataset is wider
+
+Main actions:
+- `Generate Insights`
+- `Custom Hypothesis`
+- `Explore Columns` (currently placeholder / no-op)
+
+### InsightNode
+
+Represents one AI-generated analytical insight. It shows:
+- title
+- description
+- rationale
+- involved column tags
+- an inline `InsightChart`
+
+On first mount it calls `resolveChartType()` so the chart uses exact dataset column names, then stores the resolved chart metadata in both local state and the analysis registry.
+
+Action:
+- `Generate Hypothesis`
+
+### HypothesisNode
+
+Represents a generated statistical hypothesis. It supports:
+- inline statement editing
+- accept / reject status
+- running a statistical test
+- AI fallback consent when the test is unsupported
+
+It also records its edits and status changes back into the normalized analysis map.
+
+### CustomHypothesisNode
+
+Implements a three-stage custom workflow:
+
+1. free-text user hypothesis
+2. AI-refined hypothesis statement
+3. AI-suggested candidate tests
+
+From there the user selects a test and runs it through the same stats/fallback system used by normal hypotheses.
+
+### ResultNode
+
+Displays:
+- method name
+- significance verdict
+- statistic
+- p-value
+- plain-English result summary
+- `AI-assisted` badge when applicable
+- inline `ResultChart`
+
+---
+
+## 9. Charts System
+
+Charts are split between reusable chart-data helpers and React renderers.
+
+### Main files
+
+| File | Purpose |
+|------|---------|
+| `nodes/ColumnChart.jsx` | Summary-node completeness, histogram, box, and categorical charts |
+| `nodes/charts/InsightChart.jsx` | Charts inside insight nodes |
+| `nodes/charts/ResultChart.jsx` | Charts inside result nodes |
+| `nodes/charts/chartData.js` | Pure data transforms used by charts and chat tools |
+
+### Supported chart types in the active AI flows
+
+| `chart_type` | Typical use |
+|--------------|-------------|
+| `scatter` | numeric vs numeric relationships |
+| `grouped_bar` | categorical vs numeric group differences |
+| `histogram` | univariate numeric distribution |
+| `histogram_outlier` | numeric distribution with outlier emphasis |
+| `correlation_heatmap` | 3+ numeric variable correlation overview |
+| `category_frequency` | single categorical column frequency chart |
+
+### Notable chart-data helpers
+
+`chartData.js` currently provides helper functions such as:
+- `getScatterData`
+- `getGroupBarData`
+- `getCorrelationMatrix`
+
+The correlation matrix helper excludes obvious identifier-like numeric columns using name and uniqueness heuristics so ID columns do not dominate the heatmap.
+
+### ChatPanel chart reuse
+
+The sidebar chat also reuses chart-data helpers to render:
+- small scatter plots
+- small grouped bar charts
+- mini histograms
+- categorical frequency bars
+- filtered subset comparison bars
+- a compact SVG correlation heatmap
+
+---
+
+## 10. API Services Layer
+
+All active services use raw `fetch` against the OpenAI Chat Completions endpoint. The key is read at call time via `getApiKey()`, not captured once at module import.
+
+### `descriptionService.js`
+
+`fetchDatasetDescription(metadata, spec)` returns a short one-sentence dataset description used in `DatasetNode`.
+
+### `insightService.js`
+
+`fetchInsights(metadata, spec, description)` returns 3-5 structured insights. The prompt filters obvious ID-like columns before sending schema details to OpenAI.
+
+Each insight includes:
+- `title`
+- `type`
+- `description`
+- `columns_involved`
+- `reason`
+- `chart_type`
+
+### `hypothesisService.js`
+
+`fetchHypothesis(insight, metadata, spec, label, description)` converts one insight into a formal testable hypothesis.
+
+The prompt only includes schema rows for columns involved in that insight to keep prompt size focused.
+
+### `customHypothesisService.js`
+
+Exports:
+- `refineHypothesis(text, metadata, spec, description)`
+- `fetchTestSuggestions(statement, variables, metadata, spec, description)`
+
+This powers the free-text custom hypothesis workflow.
+
+### `chartTypeService.js`
+
+`resolveChartType(insight, spec)` asks OpenAI to select:
+- the best chart type
+- the exact column names from the actual spec
+
+This is an important repair layer because AI-generated insights may use slightly mismatched column names unless normalized.
+
+### `statisticsService.js`
+
+Contains both:
+- browser-side statistical test execution
+- AI fallback result estimation
+
+### `chatTools.js`
+
+This is the most important newer addition missing from earlier documentation.
+
+It exports:
+- `TOOL_DEFINITIONS`
+- `streamChat(userMessages, spec, callbacks)`
+- `executeTool(name, args, spec)`
+
+Current client-side tools are:
+
+| Tool name | Purpose |
+|-----------|---------|
+| `get_column_stats` | Column type/stats/top values |
+| `get_column_values` | Raw value sample from one column |
+| `run_statistical_test` | Run supported in-browser tests directly from chat |
+| `filter_and_describe` | Compare filtered subset stats vs full dataset |
+| `get_correlation_matrix` | Pairwise Pearson correlation matrix |
+| `get_analysis_summary` | Current dataset/insight/hypothesis/result summary |
+
+**Important implementation detail:** tool execution is entirely client-side against `datasetSpec` and the Zustand analysis registry. No extra OpenAI request is needed just to execute a tool.
+
+`chatTools.js` also builds a live system prompt containing:
+- current dataset summary
+- current insights
+- current hypotheses and statuses
+- current results
+- aggregate analysis stats
+
+That context comes from `buildAnalysisContext()` in `analysisContext.js`.
+
+---
+
+## 11. Statistics Engine
+
+**File:** `frontend/src/modes/data/api/statisticsService.js`
+
+### Native browser-side tests
+
+The app currently computes these directly in-browser with `jstat`:
+
+| Test | Trigger |
+|------|---------|
+| Pearson correlation | `association` hypotheses or test names matching Pearson |
+| Welch's two-sample t-test | `group_difference` / `distribution_difference` flows with 1 categorical + 1 numeric variable |
+| Chi-square test of independence | `categorical_relationship` flows with 2 categorical variables |
+
+### Unsupported-test handling
+
+Tests matching patterns such as:
+- Spearman
+- Mann-Whitney
+- Wilcoxon
+- Kruskal
+- ANOVA
+- Friedman
+
+return `{ supported: false }` and trigger a user-facing consent step in the node UI before calling OpenAI for an estimated result.
+
+### AI fallback
+
+`fetchTestResult(hypothesis, metadata, spec, description)` asks OpenAI to estimate:
+- method
+- test statistic
+- p-value
+- significance
+- one-sentence explanation
+
+AI-estimated results are flagged with `aiAssisted: true`.
+
+### Result shape
+
+Native and AI-assisted outputs are normalized to the same structure:
+
+```json
+{
+  "supported": true,
+  "method": "Pearson correlation",
+  "stat": 0.42,
+  "pValue": 0.013,
+  "significant": true,
+  "summary": "Plain-English interpretation",
+  "aiAssisted": false
+}
 ```
 
 ---
 
-## 5. Entry Points & Bootstrap Flow
+## 12. CSV Parser
 
-```
-index.html
-  └── <script type="module" src="/src/main.jsx">
-        └── createRoot(document.getElementById('root')).render(
-              <StrictMode>
-                <App />
-              </StrictMode>
-            )
-              └── App.jsx → renders <MindMapCanvas />
-                    └── MindMapCanvas.jsx → ReactFlow canvas with:
-                          - initialNodes (demo Climate Change Q&A)
-                          - initialEdges
-                          - Custom nodeTypes registry
-                          - All handler callbacks
+**File:** `frontend/src/modes/data/utils/csvParser.js`
+
+`parseCSV(file)` returns:
+
+```json
+{
+  "metadata": { "name": "...", "rows": 0, "columns": 0, "source": "Local upload" },
+  "spec": { "rowCount": 0, "columnCount": 0, "numericCount": 0, "categoricalCount": 0, "columns": [] }
+}
 ```
 
-**Key detail:** `index.html` has `<title>frontend</title>` — this is the default Vite placeholder and should be updated to "MindMapper".
+### What it currently does
+
+- reads the CSV in-browser with `FileReader`
+- parses quoted CSV rows
+- uses the header row for column names
+- treats common null-like strings as missing values
+- infers each column as `numeric`, `categorical`, or `datetime`
+- stores raw values for downstream statistics and chat tools
+
+### Numeric column outputs
+
+For numeric columns it computes:
+- mean
+- median
+- min
+- max
+- q1
+- q3
+- std
+- 10-bin histogram
+
+### Non-numeric outputs
+
+For categorical and datetime columns it computes:
+- top values
+- unique count
+- missing count
+
+### Important current note
+
+`categoricalCount` is effectively "non-numeric count" in the current implementation, so datetime columns are included in that count.
 
 ---
 
-## 6. Component Architecture
+## 13. Layout Engine
 
-### `MindMapCanvas.jsx` — The Orchestrator
+**Files:**
+- `frontend/src/modes/data/components/DataCanvas.jsx`
+- `frontend/src/modes/data/utils/layoutGraph.js`
 
-**Location:** `frontend/src/components/MindMapCanvas.jsx`  
-**Size:** 626 lines  
-**Purpose:** Central hub. Owns ALL application state and ALL business logic. Renders the ReactFlow canvas and passes callbacks down into node data props.
+The app uses Dagre to keep the analysis graph readable as nodes are added.
 
-#### State Variables
+The layout reruns when:
+- node count changes
+- edge count changes
+- the summary node toggles between collapsed and expanded
 
-| State | Type | Initial Value | Purpose |
-|-------|------|---------------|---------|
-| `nodes` | `Node[]` | `initialNodes` (2 demo nodes) | ReactFlow node list |
-| `edges` | `Edge[]` | `initialEdges` (1 demo edge) | ReactFlow edge list |
-| `showQueryInput` | `boolean` | `false` | Controls top-left query input accordion |
-| `newQueryText` | `string` | `''` | Controlled input for new query textarea |
-| `nodeIdCounter` | `number` | `2` | Monotonically incrementing ID generator |
-| `customQueryInput` | `object` | `{ show: false, nodeId: null, bulletText: '', bulletIndex: null }` | Controls custom query modal panel |
-| `customQueryText` | `string` | `''` | Controlled input for custom query textarea |
+It intentionally does **not** rerun during ordinary manual dragging.
 
-#### Registered Custom Node Types
-
-```js
-const nodeTypes = {
-  query: QueryNode,
-  answer: AnswerNode,
-  sources: SourcesNode,
-};
-```
-
-ReactFlow uses this map to render the correct component given a node's `type` field.
-
-#### Handler Functions (Callbacks passed to nodes via `data`)
-
-| Function | Signature | Triggered By | What It Does |
-|----------|-----------|--------------|--------------|
-| `onConnect` | `(params)` | User drags edge | Adds edge via ReactFlow `addEdge` |
-| `getNextId` | `(prefix) → string` | All create operations | Returns `"{prefix}-{counter}"`, increments counter |
-| `handleExpand` | `(nodeId, bulletIndex, bulletText)` | AnswerNode "Expand" button | Creates loading AnswerNode → calls `expandBullet()` → updates node |
-| `handleSources` | `(nodeId, bulletIndex, bulletText)` | AnswerNode "Sources" button | Creates loading SourcesNode → calls `getBulletSources()` → updates node |
-| `handleCustomQuery` | `(nodeId, bulletIndex, bulletText)` | AnswerNode "Custom" button | Opens custom query modal with bullet context |
-| `submitCustomQuery` | `()` | Custom modal "Submit" button | Creates QueryNode + loading AnswerNode → calls `getAIResponse()` with context |
-| `simulateAnswer` | `(queryId, queryText)` | `addQueryNode` | Creates loading AnswerNode → calls `getAIResponse()` → updates node |
-| `addQueryNode` | `()` | "Add Query" button | Creates root QueryNode at random position → triggers `simulateAnswer` |
-
-#### Node Positioning Logic
-
-New nodes are positioned **relative to their parent node**:
-- **Expand / Sources:** `x = parent.x + 450`, `y = parent.y + (bulletIndex * 40)`
-- **Custom Query node:** Same as above
-- **Custom Answer node:** `x = parent.x + 900`, `y = parent.y + (bulletIndex * 40)`
-- **Simulate Answer (root):** `x = query.x - 20`, `y = query.y + 150`
-- **New root Query:** `x = random(100..500)`, `y = random(50..250)`
-
-#### `nodesWithHandlers` Pattern
-
-Because `initialNodes` don't have handler callbacks in their `data` (they're defined statically), `MindMapCanvas` applies a `.map()` pass over all nodes before passing them to ReactFlow:
-
-```js
-const nodesWithHandlers = nodes.map((node) => {
-  if (node.type === 'answer') {
-    return { ...node, data: { ...node.data, onExpand, onSources, onCustomQuery } };
-  }
-  return node;
-});
-```
-
-This ensures even the initial demo `AnswerNode` gets live callbacks.
-
-#### UI Panels (ReactFlow `<Panel>` overlays)
-
-| Position | Content |
-|----------|---------|
-| `top-left` | App title ("MindMapper"), subtitle, "+ New Query" button / query textarea |
-| `top-right` | Color legend (Query=green, Answer=blue, Sources=orange) |
-| `top-center` | Custom query modal (shown only when `customQueryInput.show === true`) |
-| `bottom-right` | ReactFlow `<Controls>` (zoom, fit view) |
-| `bottom-left` | ReactFlow `<MiniMap>` (overview thumbnail) |
+This matters because the summary node can change height substantially between collapsed and expanded states.
 
 ---
 
-### `QueryNode.jsx` — User Query Card
+## 14. Right Sidebar: Theme + Ask AI
 
-**Location:** `frontend/src/components/QueryNode.jsx`  
-**Size:** 37 lines  
-**Color:** 🟢 Green (`#4caf50`)  
-**Purpose:** Displays the user's question/prompt text. Stateless — renders `data.label`.
+The right sidebar is now a first-class part of the Data Mode shell.
 
-#### ReactFlow Handles
+### Current behavior
 
-| Handle | Type | Position | ID |
-|--------|------|----------|----|
-| Target (input) | `target` | Top | (default) |
-| Source (output) | `source` | Bottom | (default) |
+- closed by default
+- opens from a right-edge tab
+- resizable by dragging
+- width constrained between 160 px and 520 px
 
-#### Props Received via `data`
+### Sections
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `label` | `string` | The question text to display |
+**Display**
+- dark mode toggle implemented as a switch-like control
 
----
+**Ask AI**
+- `ChatPanel`
+- disabled until a dataset is uploaded
+- tool-enabled assistant over both the dataset and the current analysis graph
 
-### `AnswerNode.jsx` — AI Response Card
+### Why this matters architecturally
 
-**Location:** `frontend/src/components/AnswerNode.jsx`  
-**Size:** 121 lines  
-**Color:** 🔵 Blue (`#2196f3`)  
-**Purpose:** Renders an LLM response as a list of interactive bullet points. Most complex node.
-
-#### Local State
-
-| State | Purpose |
-|-------|---------|
-| `hoveredBullet` | Index of the currently hovered bullet (null if none). Controls action menu visibility and handle opacity. |
-
-#### Bullet Parsing
-
-Bullets are normalized from `data.bullets` (array) OR `data.label` (newline-delimited string):
-```js
-const bullets = Array.isArray(data.bullets)
-  ? data.bullets
-  : (data.label || '').split('\n').filter(line => line.trim());
-```
-
-#### Per-Bullet Interactive Options (hover menu)
-
-When a bullet is hovered, three action buttons appear with a fade-in animation:
-
-| Button | Icon | Calls |
-|--------|------|-------|
-| Expand | `↳ Expand` | `data.onExpand(id, bulletIndex, bulletText)` |
-| Sources | `🔍 Sources` | `data.onSources(id, bulletIndex, bulletText)` |
-| Custom | `✏️ Custom` | `data.onCustomQuery(id, bulletIndex, bulletText)` |
-
-#### ReactFlow Handles
-
-| Handle | Type | Position | ID | Notes |
-|--------|------|----------|----|-------|
-| Per-bullet source | `source` | Right | `bullet-{index}` | One per bullet; opacity 0 unless bullet is hovered |
-| Target (input) | `target` | Top | (default) | Receives edges from QueryNodes |
-| Source (output) | `source` | Bottom | (default) | For free-hand manual edge connections |
-
-#### Props Received via `data`
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `bullets` | `string[]` | Array of bullet point strings |
-| `label` | `string` | Fallback if bullets is not an array |
-| `onExpand` | `function` | Injected by MindMapCanvas |
-| `onSources` | `function` | Injected by MindMapCanvas |
-| `onCustomQuery` | `function` | Injected by MindMapCanvas |
+The analysis is no longer only node-driven. Users can now inspect and continue the same analysis in a conversational way without leaving the canvas or rebuilding context manually.
 
 ---
 
-### `SourcesNode.jsx` — Web Citations Card
+## 15. Theming System
 
-**Location:** `frontend/src/components/SourcesNode.jsx`  
-**Size:** 106 lines  
-**Color:** 🟠 Orange (`#ff9800`)  
-**Purpose:** Displays a list of clickable source articles returned by Perplexity, with lazy-loaded Open Graph thumbnail images.
+Theme state currently lives locally in `modes/data/DataModeApp.jsx`, not in Zustand.
 
-#### Local State
+The component writes `data-theme="light"` or `data-theme="dark"` onto `document.documentElement`, and CSS variables in the Data Mode styles respond to that attribute.
 
-| State | Purpose |
-|-------|---------|
-| `sources` | Array of `{ title, url, image }` objects. Initially populated from `data.sources` prop; images loaded lazily. |
+Current user-facing theme control:
+- dark mode toggle in the right sidebar
 
-#### Image Loading (`useEffect`)
-
-When `data.sources` changes:
-1. Sources are immediately displayed (with `image: null` placeholders, showing 📄 emoji)
-2. `Promise.all(data.sources.map(fetchArticleImage))` kicks off in the background
-3. On completion, `setSources(sourcesWithImages)` triggers a re-render to show thumbnails
-
-`fetchArticleImage` is imported from `perplexity.js` and hits the `microlink.io` API.
-
-#### Rendering
-
-Each source renders as a clickable `<a>` tag (opens in new tab) with:
-- A thumbnail image (80×60px) or fallback 📄 emoji
-- Article title (truncated at 80 chars with `...`)
-- Domain name extracted via `new URL(source.url).hostname`
-
-#### ReactFlow Handles
-
-| Handle | Type | Position | Notes |
-|--------|------|----------|-------|
-| Target (input) | `target` | Top | Receives edge from AnswerNode bullets |
-
-SourcesNode has no output handle — it is a **terminal node** in the graph.
-
-#### Props Received via `data`
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `sources` | `Array<{title, url, image}>` | Source objects from Perplexity |
-| `label` | `string` | Placeholder text during loading |
+The theme is not yet persisted across sessions.
 
 ---
 
-## 7. State Management
+## 16. Key Workflows
 
-There is **no global state library** (no Redux, Zustand, Context API). All state is managed via `useState` + `useCallback` hooks in `MindMapCanvas.jsx`, which acts as the single source of truth.
+### Workflow A: Upload → Description → Summary
 
-Callbacks are passed down through the ReactFlow `data` prop object on each node:
+1. User drops a CSV on the shell or clicks the empty canvas
+2. `parseCSV()` returns `metadata` and `spec`
+3. `resetGraph()` clears prior analysis
+4. `setDataset()` stores metadata/spec and creates a clean dataset record
+5. A `DatasetNode` is spawned
+6. `DatasetNode` auto-calls `fetchDatasetDescription()`
+7. User clicks `View Summary`
+8. A `DatasetSummaryNode` is created or toggled
 
-```
-MindMapCanvas (state owner)
-  │
-  ├── nodes: Node[]  ─────────────────────────────────────────┐
-  │     node.data = {                                          │
-  │       bullets: string[],    // content                     │
-  │       onExpand: fn,         // ← callback reference       │
-  │       onSources: fn,        // ← callback reference       │◄─ injected via nodesWithHandlers
-  │       onCustomQuery: fn,    // ← callback reference       │
-  │     }                                                      │
-  └── edges: Edge[]                                            │
-                                                               │
-  AnswerNode receives node.data and calls data.onExpand(...)──┘
-```
+### Workflow B: Summary → Insights → Hypothesis → Result
 
-**Important:** Callbacks are re-created when their dependencies change (due to `useCallback`). Because `handleExpand` depends on `getNextId`, `setNodes`, and `setEdges`, any re-render that changes these (which is every render that updates node counter) causes all callbacks to be re-created. This is functional but not fully optimized.
+1. User clicks `Generate Insights`
+2. `fetchInsights()` returns 3-5 insight objects
+3. Insight nodes are spawned and connected from `insights-out`
+4. Each `InsightNode` calls `resolveChartType()` on mount
+5. User clicks `Generate Hypothesis`
+6. `fetchHypothesis()` returns a structured hypothesis
+7. Hypothesis node is created and registered
+8. User accepts/rejects or edits the statement if desired
+9. User runs the suggested test
+10. Result is computed in-browser or estimated through AI fallback
+11. A `ResultNode` is spawned and registered
 
----
+### Workflow C: Custom Hypothesis
 
-## 8. Services Layer
+1. User clicks `Custom Hypothesis`
+2. A `CustomHypothesisNode` is spawned from `custom-hyp-out`
+3. User writes a plain-language question
+4. `refineHypothesis()` turns it into a formal statement
+5. `fetchTestSuggestions()` proposes 2-3 tests
+6. User selects a test and runs it
+7. Native test or AI fallback produces a `ResultNode`
 
-### `perplexity.js` — Primary (Active) AI Service
+### Workflow D: Ask AI Sidebar
 
-**Location:** `frontend/src/services/perplexity.js`  
-**Size:** 233 lines  
-**Base URL:** `https://api.perplexity.ai/chat/completions`  
-**Model:** `sonar`  
-**Auth:** Bearer token from `VITE_PERPLEXITY_API_KEY`
-
-#### Exported Functions
-
----
-
-**`getAIResponse(query, context = []) → Promise<string[]>`**
-
-Called by: `MindMapCanvas.simulateAnswer`, `MindMapCanvas.submitCustomQuery`
-
-Flow:
-1. Builds system prompt telling Sonar to respond as 5–6 bullet points
-2. Combines optional `context` array + user `query` into `messages`
-3. POSTs to Perplexity API
-4. Parses response: splits on newlines, strips bullet markers (`-`, `•`, `*`), numbered prefixes, `**bold**` markdown, and citation markers (`[1]`, `[1,2]`)
-5. Returns up to 6 clean strings
-
-Error handling: returns single-element array with human-readable error string (401 → invalid key, 429 → rate limit, else generic).
+1. User uploads a dataset
+2. User opens the right sidebar
+3. User asks a dataset or analysis question
+4. `streamChat()` sends the conversation plus tool definitions
+5. OpenAI may call client-side tools
+6. Tool results render as cards inline in the chat
+7. Assistant continues with an interpreted answer using both tool output and the live analysis context
 
 ---
 
-**`expandBullet(bulletText, originalQuery) → Promise<string[]>`**
+## 17. Edge & Handle Conventions
 
-Called by: `MindMapCanvas.handleExpand`
+Named source handles on `DatasetSummaryNode`:
+- `insights-out`
+- `custom-hyp-out`
 
-Constructs a query: `"Based on this context: '...', please elaborate on this point: '...'."` then delegates to `getAIResponse`.
+Current visual edge styles:
 
----
+| Connection | Style |
+|------------|-------|
+| Dataset → Summary | gray dashed |
+| Summary → Insight | indigo dashed |
+| Summary → Custom Hypothesis | violet dashed |
+| Insight → Hypothesis | purple dashed |
+| Hypothesis → Result | green dashed |
+| Custom Hypothesis → Result | green dashed |
 
-**`fetchArticleImage(url) → Promise<string | null>`**
-
-Called by: `SourcesNode` (internal useEffect)
-
-Hits `https://api.microlink.io/?url={encoded}&screenshot=false&video=false`, extracts `data.data.image.url` from Open Graph metadata. Returns `null` on any failure.
-
----
-
-**`getBulletSources(bulletText) → Promise<Array<{title, url, image}>>`**
-
-Called by: `MindMapCanvas.handleSources`
-
-Flow:
-1. POSTs query to Perplexity API with `return_citations: true`
-2. Extracts `data.citations` (array of URLs from Perplexity)
-3. Extracts content lines to use as titles (parallel to citation URLs)
-4. Maps each citation URL to `{ title, url, image: null }` (up to 5 sources)
-5. If title can't be extracted from content, falls back to URL path parsing
-6. Returns fallback Google search link if citations array is empty
+Most edges are created explicitly by the node components when new downstream nodes are spawned.
 
 ---
 
-### `openai.js` — Secondary (Unused) AI Service
+## 18. API Key Handling
 
-**Location:** `frontend/src/services/openai.js`  
-**Size:** 92 lines  
-**Status:** ⚠️ **Currently not imported or called anywhere in the running app.** The `MindMapCanvas` imports from `perplexity.js` exclusively.
+The OpenAI API key is entered through `ApiKeyModal` and stored in `sessionStorage` under `sv_openai_key`.
 
-Uses the official `openai` npm package:
-```js
-const openai = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
-```
+Important current properties:
+- not bundled into the frontend
+- not stored in project files
+- persists only for the current browser session
+- read at request time by `getApiKey()`
 
-Exports the same function signatures as `perplexity.js`:
-- `getAIResponse(query, context)` — uses `gpt-3.5-turbo`, `max_tokens: 500`
-- `expandBullet(bulletText, originalQuery)`
-- `getBulletSources(bulletText)` — asks GPT for source descriptions (no actual URL citations)
-
-The `dangerouslyAllowBrowser: true` flag is needed because the OpenAI SDK normally blocks browser usage (API key exposure risk).
+The modal copy explicitly states that the key is sent directly to OpenAI and not elsewhere.
 
 ---
 
-## 9. Constants & Configuration
+## 19. Deployment
 
-**Location:** `frontend/src/constants/api.js`
+The project deploys to GitHub Pages via `.github/workflows/deploy.yml`.
 
-```js
-export const PERPLEXITY_API_KEY = import.meta.env.VITE_PERPLEXITY_API_KEY;
-export const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
+### CI/CD flow
 
-export const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-export const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-```
+1. checkout
+2. setup Node 20
+3. `npm ci` in `frontend/`
+4. `npm run build` in `frontend/`
+5. upload `frontend/dist`
+6. deploy with `actions/deploy-pages@v4`
 
-`OPENAI_API_URL` and `OPENAI_API_KEY` are exported but the `openai.js` service uses the SDK (not this URL directly). These may be intended for a future raw-fetch implementation.
+### Hosting details
 
-**Vite Config** (`vite.config.js`):
-```js
-export default defineConfig({ plugins: [react()] });
-```
-Minimal — no proxy, no path aliases, no custom port.
-
-**ESLint Config** (`eslint.config.js`): Flat config using `@eslint/js`, `globals`, `eslint-plugin-react-hooks`, and `eslint-plugin-react-refresh`. Standard React project linting.
+- Vite base path: `/mindmapper/`
+- app route: `/mindmapper/statviz`
+- SPA deep-link support handled by `404.html` + `index.html` path restoration
 
 ---
 
-## 10. Data Flow Diagrams
+## Summary Snapshot
 
-### A. New Query Flow
+As of April 24, 2026, the live StatViz system is best understood as a **client-side visual analysis canvas plus a synchronized analysis registry plus a right-sidebar AI copilot**.
 
-```
-User clicks "+ New Query"
-  → showQueryInput = true (textarea appears)
-  → User types question, presses Enter or "Add Query"
-  → addQueryNode()
-      → getNextId('query') → queryId
-      → Creates QueryNode at random(x,y), pushes to nodes[]
-      → simulateAnswer(queryId, queryText)
-          → getNextId('answer') → answerId
-          → Creates AnswerNode{bullets:['Loading...']} at (queryX-20, queryY+150)
-          → Creates edge: queryId → answerId (blue, #2196f3)
-          → await getAIResponse(queryText)  [perplexity.js]
-              → POST https://api.perplexity.ai/chat/completions
-              → Returns string[]
-          → Updates AnswerNode with real bullets + callbacks
-```
-
-### B. Bullet Expand Flow
-
-```
-User hovers AnswerNode bullet → actions menu appears
-  → Clicks "↳ Expand"
-  → AnswerNode calls data.onExpand(nodeId, bulletIndex, bulletText)
-  → MindMapCanvas.handleExpand(nodeId, bulletIndex, bulletText)
-      → getNextId('answer') → expandedAnswerId
-      → Creates AnswerNode{bullets:['Expanding...']} at (parentX+450, parentY + bulletIndex*40)
-      → Creates edge: nodeId [sourceHandle: bullet-{bulletIndex}] → expandedAnswerId (purple, #9c27b0)
-      → await expandBullet(bulletText, '')  [perplexity.js]
-          → Constructs elaboration prompt
-          → POST https://api.perplexity.ai/chat/completions
-          → Returns string[]
-      → Updates expandedAnswerNode with real bullets + callbacks
-```
-
-### C. Sources Lookup Flow
-
-```
-User hovers AnswerNode bullet → actions menu appears
-  → Clicks "🔍 Sources"
-  → AnswerNode calls data.onSources(nodeId, bulletIndex, bulletText)
-  → MindMapCanvas.handleSources(nodeId, bulletIndex, bulletText)
-      → getNextId('sources') → sourcesId
-      → Creates SourcesNode{sources:[]} at (parentX+450, parentY + bulletIndex*40)
-      → Creates edge: nodeId [sourceHandle: bullet-{bulletIndex}] → sourcesId (orange, #ff9800)
-      → await getBulletSources(bulletText)  [perplexity.js]
-          → POST with return_citations:true
-          → Extracts citation URLs + content lines for titles
-          → Returns [{title, url, image:null}, ...]
-      → Updates SourcesNode.data.sources = [{...}]
-      → SourcesNode.useEffect fires → fetchArticleImage() per source (microlink.io)
-      → Sources re-render with thumbnail images
-```
-
-### D. Custom Query Flow
-
-```
-User hovers AnswerNode bullet → actions menu appears
-  → Clicks "✏️ Custom"
-  → AnswerNode calls data.onCustomQuery(nodeId, bulletIndex, bulletText)
-  → MindMapCanvas sets customQueryInput = { show:true, nodeId, bulletText, bulletIndex }
-  → Custom query Panel appears at top-center
-  → User types custom question, presses Enter or "Submit Query"
-  → submitCustomQuery()
-      → getNextId('query') → queryId
-      → getNextId('answer') → answerId
-      → Creates QueryNode{label: customText} at (parentX+450, parentY + bulletIndex*40)
-      → Creates AnswerNode{bullets:['Loading...']} at (parentX+900, parentY + bulletIndex*40)
-      → Creates edge: nodeId [bullet-{bulletIndex}] → queryId (orange)
-      → Creates edge: queryId → answerId (blue)
-      → Closes modal
-      → contextQuery = `Context: "${bulletText}". Question: ${customQueryText}`
-      → await getAIResponse(contextQuery)  [perplexity.js]
-      → Updates answerId node with real bullets + callbacks
-```
-
----
-
-## 11. Node Graph Model (Edges & Handles)
-
-### Edge Color Coding
-
-| Color | Hex | Meaning |
-|-------|-----|---------|
-| Blue | `#2196f3` | Query → Answer (main response) |
-| Purple | `#9c27b0` | Answer bullet → Expanded Answer |
-| Orange | `#ff9800` | Answer bullet → Sources OR Answer bullet → Custom Query |
-
-### Default Edge Style
-
-```js
-const defaultEdgeOptions = {
-  style: { strokeWidth: 2 },
-  type: 'smoothstep',
-};
-```
-
-All edges are `smoothstep` type (rounded corners). Stroke width is 2px across the board.
-
-### Handle Architecture per Node Type
-
-```
-QueryNode:
-  ┌───────────────┐
-  │  ↓ (target)   │  ← receives edges from parent Answer bullets (custom queries)
-  │   QUERY NODE  │
-  │  ↓ (source)   │  → connects to Answer nodes
-  └───────────────┘
-
-AnswerNode:
-  ┌────────────────────────────────┐
-  │  ↓ (target, top)              │  ← receives edges from Query nodes
-  │   • bullet 0  ● ──────────── │→  source handle: bullet-0 (right side, per bullet)
-  │   • bullet 1  ● ──────────── │→  source handle: bullet-1
-  │   • bullet 2  ● ──────────── │→  source handle: bullet-2
-  │  ↓ (source, bottom)           │  → free-form source handle
-  └────────────────────────────────┘
-
-SourcesNode:
-  ┌───────────────┐
-  │  ↓ (target)   │  ← receives edges from Answer bullet handles
-  │  SOURCES NODE │
-  │  (no source)  │  ← terminal node, no outputs
-  └───────────────┘
-```
-
----
-
-## 12. Styling System
-
-All styles are **vanilla CSS** with `.css` files co-located with their component. No CSS Modules, no preprocessors, no Tailwind.
-
-### Color Palette
-
-| Token (by concept) | Value | Usage |
-|---|---|---|
-| Query green | `#4caf50` | QueryNode border, header, handle |
-| Query green dark | `#43a047`, `#388e3c` | Hover states |
-| Answer blue | `#2196f3` | AnswerNode border, header, handle, bullet marker |
-| Answer blue dark | `#1565c0` | Bullet text color |
-| Sources orange | `#ff9800` | SourcesNode border, header, handle |
-| Sources orange dark | `#e65100`, `#f57c00` | Title text, domain text |
-| Expand action | `#4caf50` bg, `#2e7d32` text | Expand button |
-| Sources action | `#ff9800` bg, `#e65100` text | Sources button |
-| Custom action | `#9c27b0` bg, `#7b1fa2` text | Custom query button |
-| Canvas BG | `linear-gradient(135deg, #f8fafc, #e2e8f0)` | Full viewport background |
-| Panel BG | `white` | All overlay panels |
-| SlateGray | `#64748b`, `#94a3b8` | Secondary text, subtitles |
-
-### Global Styles (`index.css`)
-
-- Font: `'Inter', system-ui, -apple-system, sans-serif`
-- Base colors: text `#1e293b`, bg `#f8fafc`
-- `box-sizing: border-box` on all elements
-- `#root` fills 100% viewport width and height
-
-### Node Sizing
-
-| Node | min-width | max-width |
-|------|-----------|-----------|
-| QueryNode | 200px | 300px |
-| AnswerNode | 280px | 380px |
-| SourcesNode | 350px | 500px |
-
-### Animation
-
-- Bullet action menu: CSS `@keyframes fadeIn` (opacity 0→1, translateY -4px→0, 0.15s)
-- Node hover: `box-shadow` transitions (0.2s ease)
-- Bullet handle: `opacity` transition (0.2s ease)
-- Button hover: `translateY(-1px)` / `translateY(-2px)` lifts
-
----
-
-## 13. Environment Variables & API Keys
-
-**File:** `frontend/.env`
-
-```
-VITE_OPENAI_API_KEY=sk-proj-...
-VITE_PERPLEXITY_API_KEY=pplx-...
-```
-
-> ⚠️ **Security Note:** `.env` is committed to the repo and contains live API keys. This is a known risk and acceptable for a local Capstone demo, but keys should be rotated and `.env` added to `.gitignore` before any public deployment. The `openai.js` file explicitly acknowledges this with the `dangerouslyAllowBrowser: true` flag.
-
-Vite exposes env variables prefixed with `VITE_` to the browser bundle via `import.meta.env`.
-
----
-
-## 14. Inter-Module Communication Pattern
-
-The communication architecture is a **top-down callback injection pattern**:
-
-```
-MindMapCanvas (parent, state owner)
-│
-│  Injects callbacks into node data:
-│  node.data = { onExpand, onSources, onCustomQuery }
-│
-├──▶ AnswerNode (child, event emitter)
-│     Calls data.onExpand(nodeId, bulletIndex, bulletText)
-│     Calls data.onSources(nodeId, bulletIndex, bulletText)
-│     Calls data.onCustomQuery(nodeId, bulletIndex, bulletText)
-│
-│  MindMapCanvas handles the event, calls service:
-│
-├──▶ perplexity.js (service, API client)
-│     getAIResponse()     → POST Perplexity API
-│     expandBullet()      → POST Perplexity API
-│     getBulletSources()  → POST Perplexity API (with citations)
-│     fetchArticleImage() → GET microlink.io
-│
-└──▶ SourcesNode (child, self-manages image loading)
-      Imports fetchArticleImage directly from perplexity.js
-      Uses useEffect to lazy-load images after data.sources prop changes
-```
-
-**Key design choices:**
-- `QueryNode` and `SourcesNode` are nearly stateless; `AnswerNode` has minimal local hover state
-- All node creation, edge creation, and API orchestration lives in `MindMapCanvas`
-- `SourcesNode` is the only component that directly imports a service — it manages its own image-loading side effect because image loading is purely display-level
-
----
-
-## 15. Known Architecture Gaps & Planned Work
-
-### Currently Missing (not yet built)
-
-| Gap | Details |
-|-----|---------|
-| **No Backend** | All API calls go directly from browser. Keys are exposed in client bundle. |
-| **No Persistence** | The canvas resets on page refresh. No localStorage, no DB. |
-| **No Context Tracking** | Bullet expansion passes `''` as `originalQuery` — branch context is not tracked. |
-| **`openai.js` dead code** | Module exists and is fully functional but nothing imports it. |
-| **No RAG / Embeddings** | No FAISS or Sentence Transformers implemented yet. |
-| **nodeIdCounter closure bug** | `getNextId` uses `useCallback` with `nodeIdCounter` dependency, causing staleness in rapid sequential calls. |
-| **No error boundary** | If a node render crashes, the whole canvas crashes. |
-| **`index.html` title** | Still says "frontend" (Vite default) — should say "MindMapper". |
-
-### Planned Features (from README / Proposal)
-- FastAPI backend to proxy all LLM calls (removes key exposure)
-- PostgreSQL for session persistence
-- FAISS vector store for branch-local RAG context
-- Running per-branch summaries
-- Collaborative multi-user editing
-- Session save/load
-
----
-
-*This document was generated by code review of the full source tree (excluding `docs/`) as of March 2026. Update it whenever major structural changes are made.*
+The most important current architectural updates relative to older descriptions are:
+- the active Data Mode root is under `modes/data/`
+- the right sidebar now includes dark mode and Ask AI
+- `chatTools.js` adds client-side tool calling over dataset and analysis state
+- the store tracks normalized dataset/insight/hypothesis/result records in parallel with React Flow nodes
+- the upload → summary → insights → hypotheses → results pipeline is fully wired end to end

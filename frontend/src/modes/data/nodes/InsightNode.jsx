@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import useDataModeStore from '../store/useDataModeStore';
 import { fetchHypothesis } from '../api/hypothesisService';
+import { resolveChartType } from '../api/chartTypeService';
+import InsightChart from './charts/InsightChart';
 import './nodes.css';
 
 const TYPE_META = {
@@ -18,11 +20,35 @@ const EDGE_HYPOTHESIS = {
 };
 
 function InsightNode({ id, data, selected }) {
-    const [hypStatus, setHypStatus] = useState('idle'); // 'idle' | 'loading' | 'error'
+    const [hypStatus,       setHypStatus]      = useState('idle'); // 'idle' | 'loading' | 'error'
+    const [resolvedChart,   setResolvedChart]  = useState(null);
+    const [resolvedColumns, setResolvedColumns] = useState([]);
+    const didResolve = useRef(false);
 
-    const removeNode = useDataModeStore((s) => s.removeNode);
+    const removeNode          = useDataModeStore((s) => s.removeNode);
+    const datasetSpec         = useDataModeStore((s) => s.datasetSpec);
+    const resolveInsightChart = useDataModeStore((s) => s.resolveInsightChart);
+    const addHypothesisRecord = useDataModeStore((s) => s.addHypothesisRecord);
 
     const meta = TYPE_META[data.type] ?? { label: 'Insight' };
+
+    // Always ask AI for chart type + exact spec column names on first mount.
+    // Never rely on column name matching — AI has the full spec and returns exact names.
+    useEffect(() => {
+        if (didResolve.current || !datasetSpec) return;
+        didResolve.current = true;
+        resolveChartType(data, datasetSpec)
+            .then(({ chart_type, columns }) => {
+                const cols = columns?.length ? columns : (data.columns_involved ?? []);
+                setResolvedChart(chart_type);
+                setResolvedColumns(cols);
+                resolveInsightChart(id, chart_type, cols);
+            })
+            .catch(() => {
+                setResolvedChart(data.chart_type ?? null);
+                setResolvedColumns(data.columns_involved ?? []);
+            });
+    }, [datasetSpec]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Dismiss ──────────────────────────────────────────────────────────
 
@@ -45,8 +71,8 @@ function InsightNode({ id, data, selected }) {
         setHypStatus('loading');
 
         try {
-            const hypCount = nodes.filter((n) => n.type === 'hypothesis').length;
-            const label    = `H${hypCount + 1}`;
+            const { allocateHypothesisIdentifier } = useDataModeStore.getState();
+            const label = allocateHypothesisIdentifier();
 
             const { datasetDescription } = useDataModeStore.getState();
             const hypothesis = await fetchHypothesis(data, datasetMetadata, datasetSpec, label, datasetDescription);
@@ -75,6 +101,21 @@ function InsightNode({ id, data, selected }) {
                 style:  EDGE_HYPOTHESIS,
             });
 
+            addHypothesisRecord({
+                nodeId:               hypId,
+                parentInsightNodeId:  id,
+                label:                hypothesis.label ?? '',
+                title:                hypothesis.title ?? '',
+                statement:            hypothesis.statement ?? '',
+                type:                 hypothesis.type ?? '',
+                variables:            hypothesis.variables ?? [],
+                directionality:       hypothesis.directionality ?? '',
+                suggestedTest:        hypothesis.suggested_test ?? '',
+                assumptionNotes:      hypothesis.assumption_notes ?? '',
+                status:               'pending',
+                isCustom:             false,
+            });
+
             setHypStatus('idle');
         } catch (err) {
             console.error('[DataMode] fetchHypothesis failed:', err);
@@ -85,9 +126,10 @@ function InsightNode({ id, data, selected }) {
     // ── Render ────────────────────────────────────────────────────────────
 
     return (
-        <div className={`dm-node dm-node--insight ${meta.cls ?? ''} ${selected ? 'dm-node--selected' : ''}`}>
+            <div className={`dm-node dm-node--insight ${meta.cls ?? ''} ${selected ? 'dm-node--selected' : ''}`}>
             <div className="dm-node__header">
                 {meta.label}
+                {data.identifier && <span className="dm-node__header-id">{data.identifier}</span>}
             </div>
 
             <div className="dm-node__body">
@@ -105,6 +147,13 @@ function InsightNode({ id, data, selected }) {
                         ))}
                     </div>
                 )}
+
+                <InsightChart
+                    type={data.type}
+                    chart_type={resolvedChart}
+                    columns={resolvedColumns}
+                    spec={datasetSpec}
+                />
             </div>
 
             <div className="dm-node__actions">
