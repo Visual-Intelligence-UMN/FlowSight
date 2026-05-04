@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import useDataModeStore from '../store/useDataModeStore';
 import { fetchInsights } from '../api/insightService';
+import { fetchDatasetFocusLines } from '../api/datasetDetailsService';
 import { NumericCharts, CategoricalChart, CompletenessChart } from './ColumnChart';
-import { isVisualizableSummaryColumn } from './charts/chartData';
+import { isIdentifierLikeColumn, isVisualizableSummaryColumn } from './charts/chartData';
 import './nodes.css';
 
 const EDGE_INSIGHT = {
@@ -11,6 +12,54 @@ const EDGE_INSIGHT = {
     strokeWidth:     1.5,
     strokeDasharray: '5,3',
 };
+
+const EDGE_DETAILS = {
+    stroke: '#64748b',
+    strokeWidth: 1.5,
+    strokeDasharray: '4,3',
+};
+
+function summarizeDatasetDetails(spec) {
+    const rowCount = spec.rowCount ?? 0;
+    const columns = spec.columns ?? [];
+    const missingCells = columns.reduce((sum, col) => sum + (col.missing_count ?? 0), 0);
+    const columnsWithMissing = columns.filter((col) => (col.missing_count ?? 0) > 0).length;
+    const completeColumns = columns.filter((col) => (col.missing_count ?? 0) === 0).length;
+    const identifierLikeColumns = columns.filter((col) => isIdentifierLikeColumn(col)).length;
+    const constantColumns = columns.filter((col) => {
+        if (col.unique_count == null) return false;
+        return col.unique_count <= 1;
+    }).length;
+    const datetimeCount = columns.filter((col) => col.type === 'datetime').length;
+
+    let rowsWithMissing = 0;
+    let duplicateRows = 0;
+    if (rowCount > 0 && columns.length > 0) {
+        const seenRows = new Set();
+        for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+            const rowValues = columns.map((col) => String(col.raw_values?.[rowIndex] ?? ''));
+            if (rowValues.some((value) => value === '')) rowsWithMissing += 1;
+            const rowKey = rowValues.join('\u241F');
+            if (seenRows.has(rowKey)) duplicateRows += 1;
+            else seenRows.add(rowKey);
+        }
+    }
+
+    return {
+        rowCount,
+        columnCount: spec.columnCount ?? columns.length,
+        numericCount: spec.numericCount ?? columns.filter((col) => col.type === 'numeric').length,
+        categoricalCount: spec.categoricalCount ?? columns.filter((col) => col.type === 'categorical').length,
+        datetimeCount,
+        missingCells,
+        columnsWithMissing,
+        completeColumns,
+        rowsWithMissing,
+        duplicateRows,
+        constantColumns,
+        identifierLikeColumns,
+    };
+}
 
 // ── Collapsed view ──────────────────────────────────────────────────────────
 
@@ -73,6 +122,8 @@ function ExpandedSummary({ id, spec, selected }) {
     const visualNumericCols = numericCols.filter(isVisualizableSummaryColumn);
     const catCols      = spec.columns.filter((c) => c.type === 'categorical');
     const datetimeCols = spec.columns.filter((c) => c.type === 'datetime');
+    const colsWithMissing = spec.columns.filter((c) => (c.missing_count ?? 0) > 0);
+    const totalMissingCells = spec.columns.reduce((sum, col) => sum + (col.missing_count ?? 0), 0);
     const isDashboard = spec.columnCount < 10;
     const visiblePreviewCols = !isDashboard
         ? [...visualNumericCols, ...catCols, ...datetimeCols].slice(0, 6)
@@ -86,6 +137,7 @@ function ExpandedSummary({ id, spec, selected }) {
 
     const [insightStatus, setInsightStatus] = useState('idle');
     const [expandedCols, setExpandedCols]   = useState(defaultExpandedCols);
+    const [detailsStatus, setDetailsStatus] = useState('idle');
 
     const getDashboardSectionProps = (count) => ({
         className: 'dsn__db-col',
@@ -164,7 +216,7 @@ function ExpandedSummary({ id, spec, selected }) {
     };
 
     const handleCustomHypothesis = () => {
-        const { nodes, addNode, addEdge } = useDataModeStore.getState();
+        const { nodes, addNode, addEdge, allocateHypothesisIdentifier } = useDataModeStore.getState();
         const thisNode = nodes.find((n) => n.id === id);
         const pos      = thisNode?.position ?? { x: 400, y: 400 };
         const siblings = useDataModeStore.getState().edges
@@ -174,11 +226,12 @@ function ExpandedSummary({ id, spec, selected }) {
             .length;
 
         const nodeId = `custom-hyp-${Date.now()}`;
+        const identifier = allocateHypothesisIdentifier();
         addNode({
             id:   nodeId,
             type: 'customhypothesis',
             position: { x: pos.x + 420 + siblings * 320, y: pos.y + 300 },
-            data: {},
+            data: { identifier, initialLabel: identifier },
         });
         addEdge({
             id:           `e-${id}-${nodeId}`,
@@ -187,6 +240,71 @@ function ExpandedSummary({ id, spec, selected }) {
             target:       nodeId,
             style:        { stroke: '#7c3aed', strokeWidth: 1.5, strokeDasharray: '5,3' },
         });
+    };
+
+    const handleMoreDetails = async () => {
+        if (detailsStatus === 'loading') return;
+
+        const {
+            nodes,
+            edges,
+            addNode,
+            addEdge,
+            datasetMetadata,
+            datasetDescription,
+            allocateDetailsIdentifier,
+        } = useDataModeStore.getState();
+        const existing = edges
+            .filter((edge) => edge.source === id)
+            .map((edge) => edge.target)
+            .find((targetId) => nodes.find((node) => node.id === targetId)?.type === 'datasetdetails');
+        if (existing) return;
+
+        setDetailsStatus('loading');
+        try {
+            const thisNode = nodes.find((node) => node.id === id);
+            const pos = thisNode?.position ?? { x: 400, y: 240 };
+            const stats = summarizeDatasetDetails(spec);
+            let focusLines = [];
+            try {
+                focusLines = await fetchDatasetFocusLines(datasetMetadata, spec, stats, datasetDescription);
+            } catch (err) {
+                console.error('[DataMode] fetchDatasetFocusLines failed:', err);
+                focusLines = [
+                    `Start with columns that combine low missingness with strong measurement value, especially numeric outcomes.`,
+                    `Use the columns with the widest useful variation first and treat likely ID columns as labels, not analysis targets.`,
+                ];
+            }
+
+            const nodeId = `dataset-details-${Date.now()}`;
+            const identifier = allocateDetailsIdentifier();
+            addNode({
+                id: nodeId,
+                type: 'datasetdetails',
+                position: {
+                    x: pos.x + (thisNode?.measured?.width ?? thisNode?.width ?? 960) + 120,
+                    y: pos.y + 34,
+                },
+                data: {
+                    identifier,
+                    stats,
+                    focusLines,
+                    columnNames: spec.columns.map((col) => col.name),
+                },
+            });
+            addEdge({
+                id: `e-${id}-${nodeId}`,
+                source: id,
+                sourceHandle: 'details-out',
+                target: nodeId,
+                type: 'straight',
+                style: EDGE_DETAILS,
+            });
+            setDetailsStatus('idle');
+        } catch (err) {
+            console.error('[DataMode] failed to open dataset details:', err);
+            setDetailsStatus('error');
+        }
     };
 
     const nodeClass = [
@@ -204,14 +322,58 @@ function ExpandedSummary({ id, spec, selected }) {
             <div className="dsn__top-row">
                 <div className="dsn__completeness-wrap">
                     <div className="dsn__group-label">Data completeness</div>
-                    <CompletenessChart columns={spec.columns} rowCount={spec.rowCount} />
+                    {colsWithMissing.length > 0 ? (
+                        <CompletenessChart columns={colsWithMissing} rowCount={spec.rowCount} />
+                    ) : (
+                        <div className="dsn__completeness dsn__completeness--empty">
+                            <div className="dsn__completeness-summary">
+                                No missing values across all {spec.columnCount} columns
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <div className="dsn__summary-stats">
-                    <div className="dm-node__meta">
+                    <div className="dsn__summary-stat-line">
                         {spec.rowCount.toLocaleString()} rows · {spec.columnCount} columns
                     </div>
-                    <div className="dm-node__meta">
+                    <div className="dsn__summary-stat-line">
                         {spec.numericCount} numeric · {spec.categoricalCount} categorical
+                    </div>
+                    {totalMissingCells > 0 && (
+                        <div className="dsn__summary-stat-subline">
+                            {totalMissingCells.toLocaleString()} missing values in {colsWithMissing.length} column{colsWithMissing.length > 1 ? 's' : ''}
+                        </div>
+                    )}
+                </div>
+                <div className="dsn__summary-stats-wrap">
+                    <div className="dsn__summary-stats">
+                        <div className="dsn__summary-stat-line">
+                            {spec.rowCount.toLocaleString()} rows · {spec.columnCount} columns
+                        </div>
+                        <div className="dsn__summary-stat-line">
+                            {spec.numericCount} numeric · {spec.categoricalCount} categorical
+                        </div>
+                        {totalMissingCells > 0 && (
+                            <div className="dsn__summary-stat-subline">
+                                {totalMissingCells.toLocaleString()} missing values in {colsWithMissing.length} column{colsWithMissing.length > 1 ? 's' : ''}
+                            </div>
+                        )}
+                    </div>
+                    <div className="dsn__more-details-wrap">
+                        <button
+                            className="dm-node__action-btn dm-node__action-btn--ghost dsn__more-details-btn"
+                            onClick={handleMoreDetails}
+                            disabled={detailsStatus === 'loading'}
+                        >
+                            {detailsStatus === 'loading' ? 'Opening details…' : 'More Details'}
+                        </button>
+                        <Handle
+                            type="source"
+                            position={Position.Right}
+                            id="details-out"
+                            className="dsn__details-handle"
+                            style={{ right: -7, top: '50%', transform: 'translateY(-50%)' }}
+                        />
                     </div>
                 </div>
             </div>

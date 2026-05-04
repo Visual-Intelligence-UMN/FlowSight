@@ -87,6 +87,9 @@ const useDataModeStore = create((set, get) => ({
     },
     hypothesisCount: 0,
     resultCount: 0,
+    nextStepCount: 0,
+    interpretationCount: 0,
+    detailsCount: 0,
 
 
     // ── Graph actions ─────────────────────────────────────────
@@ -189,6 +192,9 @@ const useDataModeStore = create((set, get) => ({
         },
         hypothesisCount: 0,
         resultCount: 0,
+        nextStepCount: 0,
+        interpretationCount: 0,
+        detailsCount: 0,
     }),
 
     allocateInsightIdentifier: (insightType) => {
@@ -221,6 +227,24 @@ const useDataModeStore = create((set, get) => ({
         const next = get().resultCount + 1;
         set({ resultCount: next });
         return `RES${next}`;
+    },
+
+    allocateNextStepIdentifier: () => {
+        const next = get().nextStepCount + 1;
+        set({ nextStepCount: next });
+        return `NS${next}`;
+    },
+
+    allocateInterpretationIdentifier: () => {
+        const next = get().interpretationCount + 1;
+        set({ interpretationCount: next });
+        return `INT${next}`;
+    },
+
+    allocateDetailsIdentifier: () => {
+        const next = get().detailsCount + 1;
+        set({ detailsCount: next });
+        return `DD${next}`;
     },
 
     // ── Analysis record actions ───────────────────────────────

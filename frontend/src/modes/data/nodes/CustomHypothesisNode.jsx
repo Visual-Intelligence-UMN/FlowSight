@@ -11,14 +11,19 @@ const RESULT_EDGE = {
 };
 
 function CustomHypothesisNode({ id, data, selected }) {
+    const initialStatement = data.initialStatement ?? data.statement ?? null;
+    const initialVariables = data.initialVariables ?? data.variables ?? [];
+    const initialRawText = data.initialRawText ?? initialStatement ?? '';
+    const initialDirectionality = data.initialDirectionality ?? data.directionality ?? '';
+
     // ── Free-text input
-    const [rawText,      setRawText]     = useState('');
+    const [rawText,      setRawText]     = useState(initialRawText);
     const [refining,     setRefining]    = useState(false);
     const [refineError,  setRefineError] = useState('');
 
     // ── Refined statement (once AI returns it)
-    const [statement,    setStatement]   = useState(null); // null = not yet refined
-    const [variables,    setVariables]   = useState([]);
+    const [statement,    setStatement]   = useState(initialStatement); // null = not yet refined
+    const [variables,    setVariables]   = useState(initialVariables);
     const [editingStmt,  setEditingStmt] = useState(false);
     const [stmtDraft,    setStmtDraft]   = useState('');
 
@@ -83,15 +88,15 @@ function CustomHypothesisNode({ id, data, selected }) {
             setSelectedIdx(0);
             addHypothesisRecord({
                 nodeId:              id,
-                parentInsightNodeId: null,
-                label:               '',
-                title:               '',
+                parentInsightNodeId: data.parentInsightNodeId ?? null,
+                label:               data.initialLabel ?? '',
+                title:               data.initialTitle ?? '',
                 statement,
-                type:                list[0]?.type ?? '',
+                type:                data.initialType ?? list[0]?.type ?? '',
                 variables,
-                directionality:      '',
-                suggestedTest:       list[0]?.test_name ?? '',
-                assumptionNotes:     '',
+                directionality:      initialDirectionality,
+                suggestedTest:       data.initialSuggestedTest ?? list[0]?.test_name ?? '',
+                assumptionNotes:     data.initialAssumptionNotes ?? '',
                 status:              'pending',
                 isCustom:            true,
             });
@@ -229,7 +234,12 @@ function CustomHypothesisNode({ id, data, selected }) {
 
     return (
         <div className={`dm-node dm-node--custom-hyp ${selected ? 'dm-node--selected' : ''}`}>
-            <div className="dm-node__header">Custom Hypothesis</div>
+            <div className="dm-node__header">
+                Custom Hypothesis
+                {(data.identifier || data.initialLabel) && (
+                    <span className="dm-node__header-id">{data.identifier ?? data.initialLabel}</span>
+                )}
+            </div>
 
             <div className="dm-node__body">
 
