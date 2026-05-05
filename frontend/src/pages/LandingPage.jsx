@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import threeNodes from '../assets/backgrounds/threenodes-Photoroom.png';
+import { SAMPLE_DATASETS } from '../sampleDatasets';
 import './LandingPage.css';
 
 const steps = [
@@ -38,19 +39,6 @@ const steps = [
         n: '07',
         title: 'Interpret the result nodes',
         body: 'Each Result node combines a plain-language verdict, raw evidence, effect view, and chance/null view so you can judge not just whether something is significant, but whether it is meaningful and understandable.',
-    },
-];
-
-const datasets = [
-    {
-        name: 'Exercise.csv',
-        desc: '90 rows · 6 columns — exercise type, diet, pulse rate, duration.',
-        url: 'https://drive.google.com/file/d/1fWepSyHsCabHABAt-SnGM-wJjQl9fEZH/view?usp=sharing',
-    },
-    {
-        name: 'Tips.csv',
-        desc: '244 rows · 7 columns — restaurant tips, bill size, day, time, party size.',
-        url: 'https://drive.google.com/file/d/1L62GGkGioftbCsYj3xBM_ktffIVI1szU/view?usp=sharing',
     },
 ];
 
@@ -173,8 +161,8 @@ function LandingPage() {
                 <div className="lp__datasets-inner">
                     <span className="lp__datasets-label">Try with a sample dataset</span>
                     <div className="lp__datasets">
-                        {datasets.map((d) => (
-                            <a key={d.name} className="lp__dataset-card" href={d.url} target="_blank" rel="noopener noreferrer">
+                        {SAMPLE_DATASETS.map((d) => (
+                            <a key={d.name} className="lp__dataset-card" href={d.viewUrl} target="_blank" rel="noopener noreferrer">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                                     <polyline points="14 2 14 8 20 8"/>

@@ -1112,13 +1112,11 @@
 
 .dsn__dashboard--preview .dsn__db-col {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: auto;
     gap: 8px;
-    grid-auto-rows: 1fr;
+    align-items: stretch;
 }
 
 .dsn__dashboard--preview .dsn__db-card {
-    height: 100%;
     min-height: 238px;
 }
 

@@ -9,6 +9,7 @@ import { parseCSV } from './utils/csvParser';
 import { nodeTypes } from './nodes/index';
 import { buildAnalysisContext } from './store/analysisContext';
 import { fetchAnalysisQuickSummary } from './api/analysisSummaryService';
+import { EXERCISE_SAMPLE } from '../../sampleDatasets';
 
 function DataModeApp() {
     const [theme, setTheme]           = useState('light');
@@ -116,6 +117,40 @@ function DataModeApp() {
             console.error('Drop parse error:', err);
         }
     }, [addNode, setDataset, resetGraph]);
+
+    const handleUseSampleDataset = useCallback(async () => {
+        if (!EXERCISE_SAMPLE?.appPath) return;
+        try {
+            const sampleUrl = `${import.meta.env.BASE_URL}${EXERCISE_SAMPLE.appPath}`.replace(/([^:]\/)\/+/g, '$1');
+            const response = await fetch(sampleUrl);
+            if (!response.ok) {
+                throw new Error(`Sample fetch failed with ${response.status}`);
+            }
+            const csvText = await response.text();
+            const sampleFile = new File([csvText], EXERCISE_SAMPLE.name, { type: 'text/csv' });
+            const { metadata, spec } = await parseCSV(sampleFile);
+            resetGraph();
+            setDataset({
+                metadata: {
+                    ...metadata,
+                    source: 'Built-in sample',
+                },
+                spec,
+            });
+            addNode({
+                id:       `dataset-${Date.now()}`,
+                type:     'dataset',
+                position: { x: 400, y: 200 },
+                data:     {
+                    ...metadata,
+                    source: 'Built-in sample',
+                },
+            });
+            setUploadPos(null);
+        } catch (err) {
+            console.error('Sample dataset load error:', err);
+        }
+    }, [addNode, resetGraph, setDataset]);
 
     const handleToggleSummary = useCallback(async () => {
         if (summaryOpen) {
@@ -289,7 +324,22 @@ function DataModeApp() {
                             {dragOver ? 'Drop to upload' : 'Drag & drop a CSV, or click anywhere to upload'}
                         </div>
                         {!dragOver && (
-                            <div className="dm-canvas__empty-sub">Your analysis graph will appear here</div>
+                            <>
+                                <div className="dm-canvas__empty-or" aria-hidden="true">OR</div>
+                                <button
+                                    type="button"
+                                    className="dm-canvas__sample-btn"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleUseSampleDataset();
+                                    }}
+                                >
+                                    Use Sample Dataset
+                                </button>
+                                <div className="dm-canvas__sample-copy">
+                                    {EXERCISE_SAMPLE?.name} — {EXERCISE_SAMPLE?.desc}
+                                </div>
+                            </>
                         )}
                     </div>
                 )}
