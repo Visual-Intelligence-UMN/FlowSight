@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import useDataModeStore from '../store/useDataModeStore';
 import { refineHypothesis, fetchTestSuggestions } from '../api/customHypothesisService';
-import { runTest, fetchTestResult } from '../api/statisticsService';
+import { runTest, fetchTestResult, fetchResultNarrative } from '../api/statisticsService';
 import { buildFallbackResultEvidence } from '../utils/evidenceModel';
 import './nodes.css';
 
@@ -11,14 +11,19 @@ const RESULT_EDGE = {
 };
 
 function CustomHypothesisNode({ id, data, selected }) {
+    const initialStatement = data.initialStatement ?? data.statement ?? null;
+    const initialVariables = data.initialVariables ?? data.variables ?? [];
+    const initialRawText = data.initialRawText ?? initialStatement ?? '';
+    const initialDirectionality = data.initialDirectionality ?? data.directionality ?? '';
+
     // ── Free-text input
-    const [rawText,      setRawText]     = useState('');
+    const [rawText,      setRawText]     = useState(initialRawText);
     const [refining,     setRefining]    = useState(false);
     const [refineError,  setRefineError] = useState('');
 
     // ── Refined statement (once AI returns it)
-    const [statement,    setStatement]   = useState(null); // null = not yet refined
-    const [variables,    setVariables]   = useState([]);
+    const [statement,    setStatement]   = useState(initialStatement); // null = not yet refined
+    const [variables,    setVariables]   = useState(initialVariables);
     const [editingStmt,  setEditingStmt] = useState(false);
     const [stmtDraft,    setStmtDraft]   = useState('');
 
@@ -83,15 +88,15 @@ function CustomHypothesisNode({ id, data, selected }) {
             setSelectedIdx(0);
             addHypothesisRecord({
                 nodeId:              id,
-                parentInsightNodeId: null,
-                label:               '',
-                title:               '',
+                parentInsightNodeId: data.parentInsightNodeId ?? null,
+                label:               data.initialLabel ?? '',
+                title:               data.initialTitle ?? '',
                 statement,
-                type:                list[0]?.type ?? '',
+                type:                data.initialType ?? list[0]?.type ?? '',
                 variables,
-                directionality:      '',
-                suggestedTest:       list[0]?.test_name ?? '',
-                assumptionNotes:     '',
+                directionality:      initialDirectionality,
+                suggestedTest:       data.initialSuggestedTest ?? list[0]?.test_name ?? '',
+                assumptionNotes:     data.initialAssumptionNotes ?? '',
                 status:              'pending',
                 isCustom:            true,
             });
@@ -133,6 +138,7 @@ function CustomHypothesisNode({ id, data, selected }) {
             data: {
                 ...result,
                 identifier,
+                parentHypothesisNodeId: id,
                 columns:    suggestion.variables ?? [],
                 chart_type: suggestion.chart_type ?? '',
                 evidence,
@@ -159,7 +165,7 @@ function CustomHypothesisNode({ id, data, selected }) {
 
     // ── Step 3: Run test ─────────────────────────────────────────────────
 
-    const handleRun = (e) => {
+    const handleRun = async (e) => {
         e.stopPropagation();
         const suggestion = suggestions[selectedIdx];
         if (!suggestion || running) return;
@@ -167,7 +173,7 @@ function CustomHypothesisNode({ id, data, selected }) {
         setRunError('');
         setNeedsConsent(false);
 
-        const { datasetSpec } = useDataModeStore.getState();
+        const { datasetSpec, datasetMetadata, datasetDescription } = useDataModeStore.getState();
         if (!datasetSpec) { setRunning(false); return; }
 
         const hypothesis = {
@@ -178,11 +184,17 @@ function CustomHypothesisNode({ id, data, selected }) {
         };
 
         const result = runTest(hypothesis, datasetSpec);
-        setRunning(false);
 
         if (result.supported) {
+            try {
+                result.narrative = await fetchResultNarrative(result, hypothesis, datasetMetadata, datasetSpec, datasetDescription);
+            } catch {
+                // fall back to renderer defaults if AI summary generation fails
+            }
+            setRunning(false);
             spawnResult(result, suggestion);
         } else {
+            setRunning(false);
             setUnsupported(result.testName ?? suggestion.test_name);
             setNeedsConsent(true);
         }
@@ -205,6 +217,11 @@ function CustomHypothesisNode({ id, data, selected }) {
             const result = await fetchTestResult(
                 hypothesis, datasetMetadata, datasetSpec, datasetDescription
             );
+            try {
+                result.narrative = await fetchResultNarrative(result, hypothesis, datasetMetadata, datasetSpec, datasetDescription);
+            } catch {
+                // fall back to renderer defaults if AI summary generation fails
+            }
             spawnResult(result, suggestion);
         } catch (err) {
             setRunError(err.message ?? 'AI estimation failed.');
@@ -217,7 +234,12 @@ function CustomHypothesisNode({ id, data, selected }) {
 
     return (
         <div className={`dm-node dm-node--custom-hyp ${selected ? 'dm-node--selected' : ''}`}>
-            <div className="dm-node__header">Custom Hypothesis</div>
+            <div className="dm-node__header">
+                Custom Hypothesis
+                {(data.identifier || data.initialLabel) && (
+                    <span className="dm-node__header-id">{data.identifier ?? data.initialLabel}</span>
+                )}
+            </div>
 
             <div className="dm-node__body">
 

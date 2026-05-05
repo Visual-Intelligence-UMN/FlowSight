@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './DataModeApp.css';
 import DataCanvas from './components/DataCanvas';
 import UploadPopup from './components/UploadPopup';
@@ -7,6 +7,9 @@ import ChatPanel from './components/ChatPanel';
 import useDataModeStore from './store/useDataModeStore';
 import { parseCSV } from './utils/csvParser';
 import { nodeTypes } from './nodes/index';
+import { buildAnalysisContext } from './store/analysisContext';
+import { fetchAnalysisQuickSummary } from './api/analysisSummaryService';
+import { EXERCISE_SAMPLE } from '../../sampleDatasets';
 
 function DataModeApp() {
     const [theme, setTheme]           = useState('light');
@@ -14,6 +17,11 @@ function DataModeApp() {
     const [dragOver, setDragOver]     = useState(false);
     const [sidebarOpen, setSidebar]   = useState(false);
     const [sidebarWidth, setSidebarWidth] = useState(220);
+    const [summaryOpen, setSummaryOpen] = useState(false);
+    const [summaryStatus, setSummaryStatus] = useState('idle');
+    const [summaryData, setSummaryData] = useState(null);
+    const [summaryError, setSummaryError] = useState('');
+    const [summaryKey, setSummaryKey] = useState('');
     const resizing = useRef(false);
     const resizeStartX = useRef(0);
     const resizeStartW = useRef(0);
@@ -23,6 +31,29 @@ function DataModeApp() {
     const addNode         = useDataModeStore((s) => s.addNode);
     const setDataset      = useDataModeStore((s) => s.setDataset);
     const resetGraph      = useDataModeStore((s) => s.resetGraph);
+    const nodes           = useDataModeStore((s) => s.nodes);
+    const insights        = useDataModeStore((s) => s.insights);
+    const hypotheses      = useDataModeStore((s) => s.hypotheses);
+    const results         = useDataModeStore((s) => s.results);
+
+    const analysisSignature = useMemo(() => JSON.stringify({
+        dataset: datasetMetadata?.name ?? '',
+        nodeTypes: nodes.map((node) => `${node.id}:${node.type}`).sort(),
+        insights: [...insights.values()].map((insight) => (
+            `${insight.nodeId}:${insight.title}:${insight.type}`
+        )).sort(),
+        hypotheses: [...hypotheses.values()].map((hypothesis) => (
+            `${hypothesis.nodeId}:${hypothesis.status}:${hypothesis.statement ?? hypothesis.title ?? ''}`
+        )).sort(),
+        results: [...results.values()].map((result) => (
+            `${result.nodeId}:${result.method}:${result.significant}:${result.aiAssisted}:${result.pValue ?? ''}:${result.summary ?? ''}`
+        )).sort(),
+    }), [datasetMetadata?.name, nodes, insights, hypotheses, results]);
+
+    const analysisStats = useMemo(
+        () => buildAnalysisContext(useDataModeStore.getState()).stats,
+        [analysisSignature]
+    );
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', theme);
@@ -87,6 +118,66 @@ function DataModeApp() {
         }
     }, [addNode, setDataset, resetGraph]);
 
+    const handleUseSampleDataset = useCallback(async () => {
+        if (!EXERCISE_SAMPLE?.appPath) return;
+        try {
+            const sampleUrl = `${import.meta.env.BASE_URL}${EXERCISE_SAMPLE.appPath}`.replace(/([^:]\/)\/+/g, '$1');
+            const response = await fetch(sampleUrl);
+            if (!response.ok) {
+                throw new Error(`Sample fetch failed with ${response.status}`);
+            }
+            const csvText = await response.text();
+            const sampleFile = new File([csvText], EXERCISE_SAMPLE.name, { type: 'text/csv' });
+            const { metadata, spec } = await parseCSV(sampleFile);
+            resetGraph();
+            setDataset({
+                metadata: {
+                    ...metadata,
+                    source: 'Built-in sample',
+                },
+                spec,
+            });
+            addNode({
+                id:       `dataset-${Date.now()}`,
+                type:     'dataset',
+                position: { x: 400, y: 200 },
+                data:     {
+                    ...metadata,
+                    source: 'Built-in sample',
+                },
+            });
+            setUploadPos(null);
+        } catch (err) {
+            console.error('Sample dataset load error:', err);
+        }
+    }, [addNode, resetGraph, setDataset]);
+
+    const handleToggleSummary = useCallback(async () => {
+        if (summaryOpen) {
+            setSummaryOpen(false);
+            return;
+        }
+
+        setSummaryOpen(true);
+        if (!datasetMetadata) return;
+
+        if (summaryData && summaryKey === analysisSignature) return;
+
+        setSummaryStatus('loading');
+        setSummaryError('');
+        try {
+            const analysisContext = buildAnalysisContext(useDataModeStore.getState());
+            const aiSummary = await fetchAnalysisQuickSummary(analysisContext);
+            setSummaryData(aiSummary);
+            setSummaryKey(analysisSignature);
+            setSummaryStatus('idle');
+        } catch (err) {
+            console.error('[DataMode] fetchAnalysisQuickSummary failed:', err);
+            setSummaryError(err?.message || 'Unable to generate summary right now.');
+            setSummaryStatus('error');
+        }
+    }, [analysisSignature, datasetMetadata, summaryData, summaryKey, summaryOpen]);
+
     return (
         <div
             className={`dm-shell ${dragOver ? 'dm-shell--drag-over' : ''}`}
@@ -94,6 +185,88 @@ function DataModeApp() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
+
+            {datasetMetadata && (
+                <>
+                    <button
+                        className={`dm-analysis-summary-toggle ${summaryOpen ? 'dm-analysis-summary-toggle--open' : ''}`}
+                        onClick={handleToggleSummary}
+                        aria-label={summaryOpen ? 'Hide quick analysis summary' : 'Show quick analysis summary'}
+                        title={summaryOpen ? 'Hide quick analysis summary' : 'Show quick analysis summary'}
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true" className="dm-analysis-summary-toggle__icon">
+                            <path d="M4 18h16M6 14l3-3 3 2 5-6 1 1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            <circle cx="6" cy="14" r="1.4" fill="currentColor" />
+                            <circle cx="9" cy="11" r="1.4" fill="currentColor" />
+                            <circle cx="12" cy="13" r="1.4" fill="currentColor" />
+                            <circle cx="17" cy="7" r="1.4" fill="currentColor" />
+                        </svg>
+                    </button>
+
+                    {summaryOpen && (
+                        <aside className="dm-analysis-summary-panel">
+                            <div className="dm-analysis-summary-panel__header">
+                                <div>
+                                    <div className="dm-analysis-summary-panel__eyebrow">Quick Summary</div>
+                                    <div className="dm-analysis-summary-panel__title">Analysis So Far</div>
+                                </div>
+                                <button
+                                    className="dm-analysis-summary-panel__close"
+                                    onClick={handleToggleSummary}
+                                    aria-label="Close quick analysis summary"
+                                >
+                                    ×
+                                </button>
+                            </div>
+
+                            <div className="dm-analysis-summary-panel__stats">
+                                <div className="dm-analysis-summary-panel__stat">
+                                    <span className="dm-analysis-summary-panel__stat-value">{analysisStats.totalInsights}</span>
+                                    <span className="dm-analysis-summary-panel__stat-label">Insights</span>
+                                </div>
+                                <div className="dm-analysis-summary-panel__stat">
+                                    <span className="dm-analysis-summary-panel__stat-value">{analysisStats.totalHypotheses}</span>
+                                    <span className="dm-analysis-summary-panel__stat-label">Hypotheses</span>
+                                </div>
+                                <div className="dm-analysis-summary-panel__stat">
+                                    <span className="dm-analysis-summary-panel__stat-value">{analysisStats.totalResults}</span>
+                                    <span className="dm-analysis-summary-panel__stat-label">Results</span>
+                                </div>
+                                <div className="dm-analysis-summary-panel__stat">
+                                    <span className="dm-analysis-summary-panel__stat-value">{analysisStats.significantResults}</span>
+                                    <span className="dm-analysis-summary-panel__stat-label">Reliable</span>
+                                </div>
+                            </div>
+
+                            {summaryStatus === 'loading' && (
+                                <div className="dm-analysis-summary-panel__state">
+                                    Generating a quick analysis summary…
+                                </div>
+                            )}
+
+                            {summaryStatus === 'error' && (
+                                <div className="dm-analysis-summary-panel__state dm-analysis-summary-panel__state--error">
+                                    {summaryError || 'Unable to generate summary right now.'}
+                                </div>
+                            )}
+
+                            {summaryData && summaryStatus !== 'loading' && (
+                                <div className="dm-analysis-summary-panel__body">
+                                    <div className="dm-analysis-summary-panel__headline">{summaryData.headline}</div>
+                                    <p className="dm-analysis-summary-panel__overview">{summaryData.overview}</p>
+                                    {summaryData.bullets?.length > 0 && (
+                                        <ul className="dm-analysis-summary-panel__bullets">
+                                            {summaryData.bullets.map((bullet) => (
+                                                <li key={bullet}>{bullet}</li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            )}
+                        </aside>
+                    )}
+                </>
+            )}
 
             {/* ── Right sidebar ───────────────────────────── */}
             <div
@@ -151,7 +324,22 @@ function DataModeApp() {
                             {dragOver ? 'Drop to upload' : 'Drag & drop a CSV, or click anywhere to upload'}
                         </div>
                         {!dragOver && (
-                            <div className="dm-canvas__empty-sub">Your analysis graph will appear here</div>
+                            <>
+                                <div className="dm-canvas__empty-or" aria-hidden="true">OR</div>
+                                <button
+                                    type="button"
+                                    className="dm-canvas__sample-btn"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleUseSampleDataset();
+                                    }}
+                                >
+                                    Use Sample Dataset
+                                </button>
+                                <div className="dm-canvas__sample-copy">
+                                    {EXERCISE_SAMPLE?.name} — {EXERCISE_SAMPLE?.desc}
+                                </div>
+                            </>
                         )}
                     </div>
                 )}

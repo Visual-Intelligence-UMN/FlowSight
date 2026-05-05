@@ -13,21 +13,25 @@ function UploadPopup({ position, onClose }) {
     const setDataset = useDataModeStore((s) => s.setDataset);
     const resetGraph = useDataModeStore((s) => s.resetGraph);
 
+    const mountDataset = ({ metadata, spec }) => {
+        resetGraph();
+        setDataset({ metadata, spec });
+        addNode({
+            id:       `dataset-${Date.now()}`,
+            type:     'dataset',
+            position: { x: 400, y: 200 },
+            data:     metadata,
+        });
+        onClose();
+    };
+
     const processFile = async (file) => {
         if (!file) return;
         setLoading(true);
         setError(null);
         try {
-            const { metadata, spec } = await parseCSV(file);
-            resetGraph();
-            setDataset({ metadata, spec });
-            addNode({
-                id:       `dataset-${Date.now()}`,
-                type:     'dataset',
-                position: { x: 400, y: 200 },
-                data:     metadata,
-            });
-            onClose();
+            const parsed = await parseCSV(file);
+            mountDataset(parsed);
         } catch (err) {
             setError('Could not parse this file. Please check it is a valid CSV.');
             console.error(err);

@@ -20,9 +20,10 @@ const ESTIMATE = {
     hypothesis:     { width: 280, height: 330 },
     column:         { width: 240, height: 130 },
     test:           { width: 280, height: 180 },
-    result:         { width: 280, height: 180 },
+    result:         { width: 660, height: 420 },
     interpretation: { width: 280, height: 180 },
     nextstep:       { width: 280, height: 180 },
+    datasetdetails: { width: 360, height: 300 },
 };
 
 const FALLBACK = { width: 280, height: 200 };
@@ -76,7 +77,7 @@ export function layoutGraph(nodes, edges) {
     dagre.layout(g);
 
     // Dagre gives centre coords; React Flow expects top-left
-    return nodes.map((node) => {
+    const laidOutNodes = nodes.map((node) => {
         const n = g.node(node.id);
         if (!n) return node;
         const { width, height } = getNodeDimensions(node);
@@ -88,4 +89,30 @@ export function layoutGraph(nodes, edges) {
             },
         };
     });
+
+    const positioned = new Map(laidOutNodes.map((node) => [node.id, node]));
+
+    // Some branches are intentionally lateral, not part of the top-to-bottom
+    // reasoning flow. Anchor those after Dagre so they stay on the right.
+    edges
+        .filter((edge) => edge.sourceHandle === 'details-out')
+        .forEach((edge) => {
+            const sourceNode = positioned.get(edge.source);
+            const targetNode = positioned.get(edge.target);
+            if (!sourceNode || !targetNode) return;
+
+            const sourceDims = getNodeDimensions(sourceNode);
+            const targetDims = getNodeDimensions(targetNode);
+            const anchoredY = sourceNode.position.y + 96;
+
+            positioned.set(edge.target, {
+                ...targetNode,
+                position: {
+                    x: sourceNode.position.x + sourceDims.width + 120,
+                    y: anchoredY,
+                },
+            });
+        });
+
+    return laidOutNodes.map((node) => positioned.get(node.id) ?? node);
 }

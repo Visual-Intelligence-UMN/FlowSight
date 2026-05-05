@@ -1,6 +1,6 @@
 # StatViz — Current System Structure & Details
 
-> **Last Updated:** April 24, 2026
+> **Last Updated:** May 4, 2026
 > **Author:** Dipan Bag (bag00003@umn.edu)
 > **Project:** UMN Capstone Project, Spring 2026
 > **Hosted At:** GitHub Pages via `actions/deploy-pages`, route `/mindmapper/statviz`
@@ -33,9 +33,9 @@
 
 ## 1. Project Overview
 
-StatViz is a browser-only, node-based exploratory data analysis workspace. Users upload a CSV dataset, inspect its summary, generate AI-assisted insights, turn those insights into statistical hypotheses, run tests in-browser when possible, and capture results as connected nodes on a React Flow canvas.
+StatViz is a browser-only, node-based exploratory data analysis workspace designed to help users move from raw tabular data to interpretable statistical conclusions. Users upload a single CSV dataset, inspect its structure, generate AI-assisted insights, turn those insights into hypotheses, run statistical tests in-browser when possible, and inspect results as connected nodes on a React Flow canvas.
 
-The current system is centered around a **data analysis pipeline**:
+The current system is centered around a **visual analysis pipeline**:
 
 1. Upload dataset
 2. Parse schema and compute column statistics
@@ -51,14 +51,19 @@ There is no backend. CSV parsing, statistics, graph state, charts, and OpenAI re
 **Current headline capabilities:**
 - CSV upload by drag-and-drop or click-to-upload popup
 - Dataset description generation from schema
-- Summary node with completeness chart and per-column charts
+- Summary node with completeness chart, mixed visual preview cards, and a right-side dataset-details expansion
 - AI-generated insight nodes
 - AI-generated hypothesis nodes
 - Custom free-text hypothesis workflow
-- In-browser statistical testing using `jstat`
+- In-browser statistical testing using `jstat`, including Pearson, Welch's t-test, chi-square, and one-way ANOVA
 - AI fallback for unsupported tests
+- Result nodes with AI-assisted interpretation, accept/reject branching, and re-run support
+- AI-generated next-step recommendations after accepted results
+- AI-generated sibling hypotheses after rejected results
+- Fixed top-right quick analysis summary overlay powered by the full graph context
 - Right sidebar with dark mode toggle and dataset-aware AI chat
 - Client-side tool calling over the live dataset and analysis context
+- Scoped Ask AI follow-ups that can target the full dataset or a specific analysis branch
 
 ---
 
@@ -74,6 +79,7 @@ Browser
 ├── DataModeApp
 │   ├── Handles theme state
 │   ├── Handles CSV drag/drop and upload popup
+│   ├── Hosts fixed top-right quick summary toggle / panel
 │   ├── Mounts right sidebar (dark mode + Ask AI)
 │   ├── Mounts DataCanvas
 │   └── Gates usage through ApiKeyModal
@@ -90,16 +96,20 @@ Browser
 │
 ├── Data Nodes
 │   ├── Dataset → Summary
-│   ├── Summary → Insights
+│   ├── Summary → Insights / More Details
 │   ├── Insight → Hypothesis
 │   ├── Hypothesis → Result
-│   └── Summary → Custom Hypothesis → Result
+│   ├── Summary → Custom Hypothesis → Result
+│   └── Result → Next Step / Sibling Hypothesis
 │
 └── AI / Stats Layer
     ├── descriptionService
+    ├── datasetDetailsService
     ├── insightService
     ├── hypothesisService
     ├── customHypothesisService
+    ├── followupService
+    ├── analysisSummaryService
     ├── chartTypeService
     ├── statisticsService
     └── chatTools + ChatPanel
@@ -150,6 +160,7 @@ mindmapper/
         │       ├── nodes/
         │       │   ├── DatasetNode.jsx
         │       │   ├── DatasetSummaryNode.jsx
+        │       │   ├── DatasetDetailsNode.jsx
         │       │   ├── InsightNode.jsx
         │       │   ├── HypothesisNode.jsx
         │       │   ├── CustomHypothesisNode.jsx
@@ -168,9 +179,12 @@ mindmapper/
         │       │   └── index.js
         │       ├── api/
         │       │   ├── descriptionService.js
+        │       │   ├── datasetDetailsService.js
         │       │   ├── insightService.js
         │       │   ├── hypothesisService.js
         │       │   ├── customHypothesisService.js
+        │       │   ├── followupService.js
+        │       │   ├── analysisSummaryService.js
         │       │   ├── chartTypeService.js
         │       │   ├── statisticsService.js
         │       │   └── chatTools.js
@@ -283,6 +297,9 @@ This registry is assembled into a clean prompt object by `analysisContext.js`.
 | `updateHypothesisStatement` | Keep inline edits in sync between node and registry |
 | `updateHypothesisStatus` | Persist accepted/rejected/pending status |
 | `addResultRecord` | Register test result in analysis map |
+| `allocateNextStepIdentifier` | Issue `NS1`, `NS2`, … identifiers |
+| `allocateInterpretationIdentifier` | Issue `INT1`, `INT2`, … identifiers |
+| `allocateDetailsIdentifier` | Issue `DD1`, `DD2`, … identifiers |
 
 ---
 
@@ -299,6 +316,7 @@ It is responsible for:
 - whole-shell drag-and-drop CSV upload
 - click-to-upload popup positioning
 - right sidebar open/close and resize behavior
+- fixed top-right quick analysis summary toggle and overlay
 - mounting `ChatPanel`
 - mounting `DataCanvas`
 - gating the app with `ApiKeyModal`
@@ -306,6 +324,8 @@ It is responsible for:
 The right sidebar lives directly inside this component and currently contains:
 - a dark mode toggle
 - an "Ask AI" section with `ChatPanel`
+
+The shell also now includes a fixed quick-summary icon in the top-right corner. It opens a compact AI-generated analysis summary panel that uses the full normalized graph context and can be toggled open/closed without changing the graph.
 
 ### DataCanvas
 
@@ -354,16 +374,27 @@ Tool result cards currently include:
 - correlation matrix heatmap
 - analysis summary metrics
 
+The chat experience now also supports:
+- scoped follow-ups tied to tagged nodes / their connected analysis lineage
+- intent-aware routing between dataset analysis, analysis follow-ups, app-help, harmless social messages, and genuine out-of-scope requests
+- client-side tool execution over both the dataset spec and the normalized analysis registry
+
+The same normalized analysis context is also reused by:
+- the dataset-details AI focus summary
+- accept/reject follow-up generation
+- the fixed quick analysis summary overlay
+
 ---
 
 ## 8. Node Types Reference
 
-The active node registry in `frontend/src/modes/data/nodes/index.js` contains 10 node types:
+The active node registry in `frontend/src/modes/data/nodes/index.js` contains 11 node types:
 
 | Type key | Component | Current usage |
 |----------|-----------|---------------|
 | `dataset` | `DatasetNode` | Active |
 | `datasetsummary` | `DatasetSummaryNode` | Active |
+| `datasetdetails` | `DatasetDetailsNode` | Active |
 | `insight` | `InsightNode` | Active |
 | `hypothesis` | `HypothesisNode` | Active |
 | `customhypothesis` | `CustomHypothesisNode` | Active |
@@ -386,13 +417,31 @@ Acts as the main orchestration node for exploration.
 Current behaviors:
 - collapsed view: compact row/column counts only
 - expanded view: completeness chart plus per-column details
+- completeness area shows only columns with at least one missing value
+- right-hand summary block includes the `More Details` action
 - dashboard mode when `columnCount < 10`
-- scrollable expandable column list when dataset is wider
+- mixed visual preview cards when dataset is wider
+- scrollable expandable column list for the remaining columns
+- `More Details` opens a separate node to the right of the summary node
 
 Main actions:
 - `Generate Insights`
 - `Custom Hypothesis`
-- `Explore Columns` (currently placeholder / no-op)
+- `More Details`
+
+Important current behavior:
+- identifier-like numeric columns are filtered out of summary visuals
+- narrow datasets render as a visual dashboard
+- wide datasets show a mixed compact visual preview first and collapse the remaining columns below
+- the footer action area is visually separated as an `Analysis Actions` panel
+
+### DatasetDetailsNode
+
+This node is opened from the dataset summary’s `More Details` button and is treated as a right-side branch rather than a normal downward child.
+
+It currently shows:
+- selected dataset-level health stats such as missing cells, rows with missing values, duplicate rows, constant columns, likely ID columns, and complete columns
+- a short 2–3 line AI-generated focus note that points the user toward the most useful columns to analyze next
 
 ### InsightNode
 
@@ -412,11 +461,13 @@ Action:
 
 Represents a generated statistical hypothesis. It supports:
 - inline statement editing
-- accept / reject status
 - running a statistical test
 - AI fallback consent when the test is unsupported
 
-It also records its edits and status changes back into the normalized analysis map.
+Important current behavior:
+- once a result exists for a hypothesis, `Run test` is disabled / grayed out on the hypothesis node
+- accept/reject decisions now happen at the result stage instead of the hypothesis node
+- edits still sync back into the normalized analysis map
 
 ### CustomHypothesisNode
 
@@ -432,12 +483,23 @@ From there the user selects a test and runs it through the same stats/fallback s
 
 Displays:
 - method name
-- significance verdict
-- statistic
-- p-value
-- plain-English result summary
-- `AI-assisted` badge when applicable
+- top summary / interpretation block
 - inline `ResultChart`
+- `AI-assisted` badge when applicable
+- `Accept`, `Reject`, and `Re-run test` controls
+
+Important current behavior:
+- accepting a result marks the parent hypothesis accepted and can spawn:
+  - a `Next Step` recommendation node
+  - a prefilled editable follow-up `Custom Hypothesis` node
+- rejecting a result marks the parent hypothesis rejected and enables creation of an alternative sibling hypothesis rooted in the same ancestor insight
+- `Re-run test` creates a fresh result node for the same hypothesis path
+
+An expandable details section contains lower-level test details and supporting labels.
+
+### NextStepNode
+
+Spawned from accepted results. Shows a concise AI-generated recommended next analytical move and uses the standard header identifier badge (`NS1`, `NS2`, …).
 
 ---
 
@@ -474,6 +536,23 @@ Charts are split between reusable chart-data helpers and React renderers.
 
 The correlation matrix helper excludes obvious identifier-like numeric columns using name and uniqueness heuristics so ID columns do not dominate the heatmap.
 
+### Result-chart visual structure
+
+`ResultChart.jsx` now branches on an evidence model rather than only on chart type strings. The active result families are:
+- group comparison
+- trend / association
+- contingency deviation
+- distribution shape
+- outlier signal
+
+Each family renders into the same high-level result-card shell, but the result visual system is no longer the earlier strict three-layer null-overlay design. The current direction is:
+1. top summary / interpretation block
+2. primary chart(s) for the result family
+3. compact p-value / chance explanation near the chart when applicable
+4. expandable details
+
+The active system has been moving away from large standalone null-distribution panels and toward simpler effect / uncertainty visuals plus short interpretation text.
+
 ### ChatPanel chart reuse
 
 The sidebar chat also reuses chart-data helpers to render:
@@ -481,8 +560,14 @@ The sidebar chat also reuses chart-data helpers to render:
 - small grouped bar charts
 - mini histograms
 - categorical frequency bars
-- filtered subset comparison bars
-- a compact SVG correlation heatmap
+
+### Current dataset-summary preview behavior
+
+The summary preview is intentionally mixed:
+- not only numeric columns
+- includes categorical and datetime columns when available
+- uses compact cards so more preview charts fit on the same row
+- preview cards are normalized to the same width and height for cleaner scanning
 
 ---
 
@@ -520,6 +605,29 @@ Exports:
 
 This powers the free-text custom hypothesis workflow.
 
+### `datasetDetailsService.js`
+
+`fetchDatasetFocusLines(metadata, spec, summaryStats, description)` returns a short 2–3 line AI focus note for the dataset-details node. It uses dataset-level health statistics plus the schema summary to suggest which columns are most worth analyzing next.
+
+### `followupService.js`
+
+Exports:
+- `fetchAcceptedNextStepRecommendation(...)`
+- `fetchRejectedAlternativeHypothesis(...)`
+
+This service uses the full normalized analysis context to:
+- suggest a logical next analytical move after an accepted result
+- generate a sibling-worthy alternative hypothesis after a rejected result
+
+### `analysisSummaryService.js`
+
+`fetchAnalysisQuickSummary(analysisContext)` powers the fixed top-right quick-summary overlay. It returns:
+- `headline`
+- `overview`
+- `bullets`
+
+The intent is to give a short AI-generated snapshot of the analysis graph so far without opening the right sidebar chat.
+
 ### `chartTypeService.js`
 
 `resolveChartType(insight, spec)` asks OpenAI to select:
@@ -536,7 +644,7 @@ Contains both:
 
 ### `chatTools.js`
 
-This is the most important newer addition missing from earlier documentation.
+This file powers the right-sidebar Ask AI assistant.
 
 It exports:
 - `TOOL_DEFINITIONS`
@@ -565,6 +673,16 @@ Current client-side tools are:
 
 That context comes from `buildAnalysisContext()` in `analysisContext.js`.
 
+The Ask AI flow now also includes an **intent-classification step** before normal streaming. The classifier distinguishes:
+- `dataset_analysis`
+- `analysis_followup`
+- `social`
+- `app_help`
+- `out_of_scope`
+- `prompt_injection`
+
+Only truly out-of-scope or adversarial requests are refused. Harmless social/opening messages and app-help questions are still answered, but the assistant remains grounded in the dataset-analysis experience.
+
 ---
 
 ## 11. Statistics Engine
@@ -579,6 +697,7 @@ The app currently computes these directly in-browser with `jstat`:
 |------|---------|
 | Pearson correlation | `association` hypotheses or test names matching Pearson |
 | Welch's two-sample t-test | `group_difference` / `distribution_difference` flows with 1 categorical + 1 numeric variable |
+| One-way ANOVA | test names matching ANOVA with 1 categorical + 1 numeric variable |
 | Chi-square test of independence | `categorical_relationship` flows with 2 categorical variables |
 
 ### Unsupported-test handling
@@ -588,7 +707,6 @@ Tests matching patterns such as:
 - Mann-Whitney
 - Wilcoxon
 - Kruskal
-- ANOVA
 - Friedman
 
 return `{ supported: false }` and trigger a user-facing consent step in the node UI before calling OpenAI for an estimated result.
@@ -603,6 +721,16 @@ return `{ supported: false }` and trigger a user-facing consent step in the node
 - one-sentence explanation
 
 AI-estimated results are flagged with `aiAssisted: true`.
+
+### Evidence model
+
+Native and AI-assisted test results are normalized into a shared evidence contract. That contract carries:
+- evidence family / kind
+- effect label and value
+- variables involved
+- structured details such as group means, effect sizes, Cramer's V, or η²
+
+This evidence model is what allows `ResultChart.jsx` to render different result families inside one consistent UI shell.
 
 ### Result shape
 
@@ -709,6 +837,22 @@ The right sidebar is now a first-class part of the Data Mode shell.
 - disabled until a dataset is uploaded
 - tool-enabled assistant over both the dataset and the current analysis graph
 
+### Ask AI interaction model
+
+The assistant is meant to help in two complementary ways:
+- answer questions about the full uploaded dataset
+- answer follow-up questions about a specific analysis branch
+
+Branch-scoped conversations work through node-tagging metadata and scoped analysis context, not by copying static text out of the node cards.
+
+The assistant can currently:
+- summarize the dataset
+- describe columns and generate visuals
+- generate new insights
+- run supported tests from chat
+- summarize the current analysis graph
+- interpret scoped nodes / branches using the live normalized analysis context
+
 ### Why this matters architecturally
 
 The analysis is no longer only node-driven. Users can now inspect and continue the same analysis in a conversational way without leaving the canvas or rebuilding context manually.
@@ -754,6 +898,7 @@ The theme is not yet persisted across sessions.
 9. User runs the suggested test
 10. Result is computed in-browser or estimated through AI fallback
 11. A `ResultNode` is spawned and registered
+12. The result card renders the layered explanation view (Evidence / Effect / Evidence vs Chance)
 
 ### Workflow C: Custom Hypothesis
 
@@ -770,10 +915,18 @@ The theme is not yet persisted across sessions.
 1. User uploads a dataset
 2. User opens the right sidebar
 3. User asks a dataset or analysis question
-4. `streamChat()` sends the conversation plus tool definitions
-5. OpenAI may call client-side tools
-6. Tool results render as cards inline in the chat
-7. Assistant continues with an interpreted answer using both tool output and the live analysis context
+4. `streamChat()` first classifies the latest intent
+5. If the request is allowed, it sends the conversation plus tool definitions and scoped analysis metadata
+6. OpenAI may call client-side tools
+7. Tool results render as cards inline in the chat
+8. Assistant continues with an interpreted answer using both tool output and the live analysis context
+
+### Workflow E: Scoped Ask AI follow-up
+
+1. User references a node or analysis branch in the chat
+2. Scope metadata is resolved from the current graph
+3. `chatTools.js` builds a scoped analysis context through `buildAnalysisContext(...)`
+4. The assistant answers using that scoped branch instead of treating the request as a whole-dataset question
 
 ---
 
@@ -803,9 +956,8 @@ Most edges are created explicitly by the node components when new downstream nod
 The OpenAI API key is entered through `ApiKeyModal` and stored in `sessionStorage` under `sv_openai_key`.
 
 Important current properties:
-- not bundled into the frontend
-- not stored in project files
-- persists only for the current browser session
+- not bundled into the frontend build
+- intended to persist only for the current browser session via `sessionStorage`
 - read at request time by `getApiKey()`
 
 The modal copy explicitly states that the key is sent directly to OpenAI and not elsewhere.
@@ -835,11 +987,14 @@ The project deploys to GitHub Pages via `.github/workflows/deploy.yml`.
 
 ## Summary Snapshot
 
-As of April 24, 2026, the live StatViz system is best understood as a **client-side visual analysis canvas plus a synchronized analysis registry plus a right-sidebar AI copilot**.
+As of May 1, 2026, the live StatViz system is best understood as a **client-side visual analysis canvas plus a synchronized analysis registry plus a right-sidebar AI copilot**.
 
 The most important current architectural updates relative to older descriptions are:
 - the active Data Mode root is under `modes/data/`
 - the right sidebar now includes dark mode and Ask AI
 - `chatTools.js` adds client-side tool calling over dataset and analysis state
+- Ask AI now includes intent-aware routing and scoped branch follow-ups
 - the store tracks normalized dataset/insight/hypothesis/result records in parallel with React Flow nodes
+- result nodes now use a layered explanation format rather than a single verdict + chart
+- one-way ANOVA is now supported natively in the browser-side statistics layer
 - the upload → summary → insights → hypotheses → results pipeline is fully wired end to end

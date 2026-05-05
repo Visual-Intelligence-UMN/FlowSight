@@ -8,6 +8,7 @@ export { default as InsightNode } from './InsightNode';
 export { default as InterpretationNode } from './InterpretationNode';
 export { default as NextStepNode } from './NextStepNode';
 export { default as CustomHypothesisNode } from './CustomHypothesisNode';
+export { default as DatasetDetailsNode } from './DatasetDetailsNode';
 
 // Ready-to-use nodeTypes map — pass directly to <DataCanvas nodeTypes={nodeTypes} />
 import DatasetNode from './DatasetNode';
@@ -20,6 +21,7 @@ import InsightNode from './InsightNode';
 import InterpretationNode from './InterpretationNode';
 import NextStepNode from './NextStepNode';
 import CustomHypothesisNode from './CustomHypothesisNode';
+import DatasetDetailsNode from './DatasetDetailsNode';
 
 export const nodeTypes = {
     dataset:          DatasetNode,
@@ -32,5 +34,5 @@ export const nodeTypes = {
     interpretation:   InterpretationNode,
     nextstep:         NextStepNode,
     customhypothesis: CustomHypothesisNode,
+    datasetdetails:   DatasetDetailsNode,
 };
-

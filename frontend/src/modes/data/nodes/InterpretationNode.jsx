@@ -5,8 +5,8 @@ function InterpretationNode({ data, selected }) {
     return (
         <div className={`dm-node dm-node--interpretation ${selected ? 'dm-node--selected' : ''}`}>
             <div className="dm-node__header">
-                <span className="dm-node__icon">🧠</span>
                 Interpretation
+                {data.identifier && <span className="dm-node__header-id">{data.identifier}</span>}
             </div>
             <div className="dm-node__body">
                 <div className="dm-node__label">{data.text || 'No interpretation yet'}</div>
