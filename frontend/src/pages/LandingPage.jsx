@@ -8,7 +8,7 @@ const steps = [
     {
         n: '01',
         title: 'Upload your dataset',
-        body: 'Drag and drop a single CSV file onto the canvas, or click to browse. StatViz parses it in the browser and creates a root Dataset node that anchors the rest of the workflow.',
+        body: 'Drag and drop a single CSV file onto the canvas, or click to browse. FlowSight parses it in the browser and creates a root Dataset node that anchors the rest of the workflow.',
     },
     {
         n: '02',
@@ -50,8 +50,8 @@ function LandingPage() {
         <div className="lp">
             {/* ── Nav ── */}
             <nav className="lp__nav">
-                <span className="lp__logo">StatViz</span>
-                <button className="lp__nav-cta" onClick={() => navigate('/statviz')}>
+                <span className="lp__logo">FlowSight</span>
+                <button className="lp__nav-cta" onClick={() => navigate('/flowsight')}>
                     Open App
                 </button>
             </nav>
@@ -60,7 +60,7 @@ function LandingPage() {
             <main className="lp__hero">
                 {/* Left */}
                 <div className="lp__hero-left">
-                    <div className="lp__eyebrow">Project StatViz</div>
+                    <div className="lp__eyebrow">Project FlowSight</div>
                     <h1 className="lp__headline">
                         From raw data to<br />
                         <span className="lp__headline-accent">explainable statistical insight</span>
@@ -77,8 +77,8 @@ function LandingPage() {
                         <span className="lp__hero-pill">Insights → Hypotheses → Results</span>
                     </div>
                     <div className="lp__hero-actions">
-                        <button className="lp__cta" onClick={() => navigate('/statviz')}>
-                            Explore StatViz
+                        <button className="lp__cta" onClick={() => navigate('/flowsight')}>
+                            Explore FlowSight
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <line x1="5" y1="12" x2="19" y2="12"/>
                                 <polyline points="12 5 19 12 12 19"/>
@@ -98,7 +98,7 @@ function LandingPage() {
                         </div>
                         <div>
                             <div className="lp__feature-title">Upload &amp; Explore</div>
-                            <div className="lp__feature-body">Drop a single CSV onto the canvas. StatViz parses it in-browser and immediately surfaces structural summaries, completeness cues, and column-level visuals.</div>
+                            <div className="lp__feature-body">Drop a single CSV onto the canvas. FlowSight parses it in-browser and immediately surfaces structural summaries, completeness cues, and column-level visuals.</div>
                         </div>
                     </div>
                     <div className="lp__feature">
@@ -136,7 +136,7 @@ function LandingPage() {
                         <img
                             className="lp__preview-img"
                             src={threeNodes}
-                            alt="StatViz canvas preview"
+                            alt="FlowSight canvas preview"
                         />
                     ) : (
                         <div className="lp__tutorial">
@@ -184,7 +184,7 @@ function LandingPage() {
             </section>
 
             <footer className="lp__footer">
-                <span>Project StatViz — Dipan Bag's Capstone Project - Spring 2026</span>
+                <span>Project FlowSight — Dipan Bag's Capstone Project - Spring 2026</span>
             </footer>
         </div>
     );

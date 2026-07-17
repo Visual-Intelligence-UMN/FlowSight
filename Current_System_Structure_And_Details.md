@@ -1,9 +1,9 @@
-# StatViz — Current System Structure & Details
+# FlowSight — Current System Structure & Details
 
 > **Last Updated:** May 4, 2026
 > **Author:** Dipan Bag (bag00003@umn.edu)
 > **Project:** UMN Capstone Project, Spring 2026
-> **Hosted At:** GitHub Pages via `actions/deploy-pages`, route `/mindmapper/statviz`
+> **Hosted At:** GitHub Pages via `actions/deploy-pages`, route `/FlowSight/flowsight`
 
 ---
 
@@ -33,7 +33,7 @@
 
 ## 1. Project Overview
 
-StatViz is a browser-only, node-based exploratory data analysis workspace designed to help users move from raw tabular data to interpretable statistical conclusions. Users upload a single CSV dataset, inspect its structure, generate AI-assisted insights, turn those insights into hypotheses, run statistical tests in-browser when possible, and inspect results as connected nodes on a React Flow canvas.
+FlowSight is a browser-only, node-based exploratory data analysis workspace designed to help users move from raw tabular data to interpretable statistical conclusions. Users upload a single CSV dataset, inspect its structure, generate AI-assisted insights, turn those insights into hypotheses, run statistical tests in-browser when possible, and inspect results as connected nodes on a React Flow canvas.
 
 The current system is centered around a **visual analysis pipeline**:
 
@@ -74,7 +74,7 @@ Browser
 │
 ├── React Router
 │   ├── /          → LandingPage
-│   └── /statviz   → AppShell → modes/data/DataModeApp
+│   └── /flowsight   → AppShell → modes/data/DataModeApp
 │
 ├── DataModeApp
 │   ├── Handles theme state
@@ -231,17 +231,17 @@ Routing is defined in `frontend/src/main.jsx` using `BrowserRouter` with `basena
 
 **Routes:**
 - `/` → `LandingPage`
-- `/statviz` → `AppShell` → `modes/data/DataModeApp`
+- `/flowsight` → `AppShell` → `modes/data/DataModeApp`
 - `*` → redirect to `/`
 
 **Important current detail:**
 - The active Data Mode implementation is `frontend/src/modes/data/DataModeApp.jsx`
-- `frontend/src/app/DataModeApp.jsx` is an older scaffold and is not what the `/statviz` route mounts today
+- `frontend/src/app/DataModeApp.jsx` is an older scaffold and is not what the `/flowsight` route mounts today
 
 **GitHub Pages SPA routing:**
 - `frontend/public/404.html` rewrites deep links into a `?p=` query parameter
 - `frontend/index.html` decodes that query before React mounts
-- This allows direct navigation to `/mindmapper/statviz`
+- This allows direct navigation to `/FlowSight/flowsight`
 
 ---
 
@@ -980,14 +980,14 @@ The project deploys to GitHub Pages via `.github/workflows/deploy.yml`.
 ### Hosting details
 
 - Vite base path: `/mindmapper/`
-- app route: `/mindmapper/statviz`
+- app route: `/FlowSight/flowsight`
 - SPA deep-link support handled by `404.html` + `index.html` path restoration
 
 ---
 
 ## Summary Snapshot
 
-As of May 1, 2026, the live StatViz system is best understood as a **client-side visual analysis canvas plus a synchronized analysis registry plus a right-sidebar AI copilot**.
+As of May 1, 2026, the live FlowSight system is best understood as a **client-side visual analysis canvas plus a synchronized analysis registry plus a right-sidebar AI copilot**.
 
 The most important current architectural updates relative to older descriptions are:
 - the active Data Mode root is under `modes/data/`

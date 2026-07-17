@@ -1,6 +1,6 @@
-# StatViz — Visual Statistical Analysis Workbench
+# FlowSight — Visual Statistical Analysis Workbench
 
-StatViz is a browser-based, node-driven data analysis workspace for CSV datasets. It helps users move from raw tabular data to insights, hypotheses, statistical tests, and interpretable result nodes on an interactive canvas.
+FlowSight is a browser-based, node-driven data analysis workspace for CSV datasets. It helps users move from raw tabular data to insights, hypotheses, statistical tests, and interpretable result nodes on an interactive canvas.
 
 > Capstone Project — Dipan Bag, Spring 2026
 > 
@@ -10,7 +10,7 @@ StatViz is a browser-based, node-driven data analysis workspace for CSV datasets
 
 ## What It Does
 
-StatViz is designed around a visible analysis graph:
+FlowSight is designed around a visible analysis graph:
 
 - `Dataset` node for the uploaded file
 - `Dataset Summary` node for completeness, preview charts, and dataset-level details
@@ -106,7 +106,7 @@ http://localhost:5173
 The active app route is:
 
 ```text
-/statviz
+/flowsight
 ```
 
 Note:
@@ -131,7 +131,7 @@ This sample is also referenced by the landing page and shared sample-dataset con
 
 ## Typical Workflow
 
-1. Open StatViz.
+1. Open FlowSight.
 2. Upload a CSV or use the sample dataset.
 3. Review the dataset description and summary.
 4. Open `More Details` if needed for dataset-health metrics.
@@ -217,7 +217,7 @@ The project is set up for static frontend deployment through GitHub Pages.
 The hosted route uses:
 
 ```text
-/mindmapper/statviz
+/FlowSight/flowsight
 ```
 
 SPA routing is supported through the `404.html` redirect pattern used in the frontend `public/` folder.

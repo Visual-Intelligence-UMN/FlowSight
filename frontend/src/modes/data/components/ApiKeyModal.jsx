@@ -23,7 +23,7 @@ function ApiKeyModal() {
                 </div>
                 <h2 className="akm__title">Enter your OpenAI API key</h2>
                 <p className="akm__desc">
-                    StatViz uses OpenAI to generate dataset descriptions, insights, and hypotheses.
+                    FlowSight uses OpenAI to generate dataset descriptions, insights, and hypotheses.
                     Your key is stored only in this browser session and sent directly to OpenAI — never anywhere else.
                 </p>
                 <form className="akm__form" onSubmit={handleSubmit}>
@@ -42,7 +42,7 @@ function ApiKeyModal() {
                         type="submit"
                         disabled={!value.trim()}
                     >
-                        Start using StatViz
+                        Start using FlowSight
                     </button>
                 </form>
                 <a
